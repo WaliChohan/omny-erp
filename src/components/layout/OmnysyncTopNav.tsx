@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useWhiteboard } from '@/context/WhiteboardContext';
+import { useChatStore } from '@/context/ChatContext';
 import {
   LayoutDashboard,
   BarChart2,
@@ -19,6 +20,7 @@ import {
   PenTool,
   CheckSquare,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 
 export type OmnysyncNavTab =
@@ -31,7 +33,9 @@ export type OmnysyncNavTab =
   | 'calendar'
   | 'crm'
   | 'todo'
-  | 'portal';
+  | 'portal'
+  | 'chat'
+  | 'documents';
 
 interface OmnysyncTopNavProps {
   activeTab: OmnysyncNavTab;
@@ -51,15 +55,19 @@ export default function OmnysyncTopNav({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearchInput, setShowSearchInput] = useState(false);
   const { openWhiteboard } = useWhiteboard();
+  const { unreadCounts, channels } = useChatStore();
+  const totalChatUnread = channels.reduce((sum, ch) => sum + (unreadCounts[ch.id] ?? 0), 0);
 
   const tabs: { id: OmnysyncNavTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'finance', label: 'Finance & COA', icon: Landmark },
+    { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'projects', label: 'Projects', icon: Briefcase },
     { id: 'crm', label: 'CRM', icon: Users2 },
     { id: 'todo', label: 'To‑Do', icon: CheckSquare },
     { id: 'portal', label: 'Client Portal', icon: ShieldCheck },
+    { id: 'chat', label: 'Chat', icon: MessageSquare },
     { id: 'tabular', label: 'Data Table', icon: Table2 },
     { id: 'drive', label: 'Drive & Docs', icon: FileText },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
@@ -86,7 +94,7 @@ export default function OmnysyncTopNav({
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+              className={`relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
                 isActive
                   ? 'bg-[#2dd4bf] text-[#052e24] shadow-md shadow-[#2dd4bf]/25 scale-[1.02]'
                   : 'text-[#9ca3af] hover:text-white hover:bg-[#19241e]'
@@ -94,6 +102,12 @@ export default function OmnysyncTopNav({
             >
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#052e24]' : 'text-[#6b7280]'}`} />
               <span>{tab.label}</span>
+              {/* Unread badge for Chat tab */}
+              {tab.id === 'chat' && totalChatUnread > 0 && !isActive && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-[#f43f5e] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {totalChatUnread > 99 ? '99+' : totalChatUnread}
+                </span>
+              )}
             </button>
           );
         })}

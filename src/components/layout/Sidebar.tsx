@@ -20,6 +20,7 @@ import {
   ClipboardList,
   CheckSquare,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 
 
@@ -36,9 +37,11 @@ export default function Sidebar({
 }: SidebarProps) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'documents', label: 'Documents Hub', icon: FileText },
     { id: 'sales', label: 'Sales & POS', icon: ShoppingCart },
     { id: 'crm', label: 'CRM', icon: Users },
     { id: 'todo', label: 'To‑Do', icon: CheckSquare },
+    { id: 'chat', label: 'Team Chat', icon: MessageSquare },
     { id: 'portal', label: 'Client Portal', icon: ShieldCheck },
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'procurement', label: 'Procurement', icon: Truck },

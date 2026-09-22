@@ -4,6 +4,8 @@ import React, { useState, useMemo } from 'react';
 import OmnysyncTopNav, { OmnysyncNavTab } from '@/components/layout/OmnysyncTopNav';
 import TodoList from '@/components/todo/TodoList';
 import Sidebar from '@/components/layout/Sidebar';
+import ChatView from '@/components/chat/ChatView';
+import DocumentManagerView from '@/components/documents/DocumentManagerView';
 
 // Views
 import MetricCards from '@/components/dashboard/MetricCards';
@@ -89,6 +91,8 @@ export default function AppMasterPage() {
     else if (id === 'crm') setActiveTab('crm');
     else if (id === 'todo') setActiveTab('todo');
     else if (id === 'portal') setActiveTab('portal');
+    else if (id === 'chat') setActiveTab('chat');
+    else if (id === 'documents') setActiveTab('documents');
     else if (id === 'hr' || id === 'sales' || id === 'inventory' || id === 'reports') {
       setActiveTab('tabular');
     }
@@ -121,6 +125,8 @@ export default function AppMasterPage() {
           else if (tab === 'crm') setSidebarNav('crm');
           else if (tab === 'todo') setSidebarNav('todo');
           else if (tab === 'portal') setSidebarNav('portal');
+          else if (tab === 'chat') setSidebarNav('chat');
+          else if (tab === 'documents') setSidebarNav('documents');
         }}
         onOpenAskAI={() => setIsAskAIOpen(true)}
         searchQuery={searchQuery}
@@ -129,8 +135,8 @@ export default function AppMasterPage() {
 
       {/* Body Layout: Optional collapsible sidebar + Content canvas */}
       <div className="flex-1 flex min-w-0">
-        {/* Left Sidebar (visible on dashboard, finance & todo tabs) */}
-        {(activeTab === 'dashboard' || activeTab === 'finance' || activeTab === 'todo') && (
+        {/* Left Sidebar (visible on dashboard, finance, todo & documents tabs) */}
+        {(activeTab === 'dashboard' || activeTab === 'finance' || activeTab === 'todo' || activeTab === 'documents') && (
           <Sidebar
             currentNav={sidebarNav}
             onNavSelect={handleSidebarSelect}
@@ -139,7 +145,10 @@ export default function AppMasterPage() {
         )}
 
         {/* Dynamic View Canvas */}
-        <main className="flex-1 p-4 md:p-8 space-y-6 max-w-[1680px] w-full mx-auto overflow-y-auto">
+        {activeTab === 'chat' ? (
+          <ChatView />
+        ) : (
+          <main className="flex-1 p-4 md:p-8 space-y-6 max-w-[1680px] w-full mx-auto overflow-y-auto">
           {/* TAB 1: ERP Command Center (Screenshot 1) */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6 animate-in fade-in duration-150">
@@ -276,7 +285,13 @@ export default function AppMasterPage() {
               <TodoList />
             </div>
           )}
-        </main>
+          {activeTab === 'documents' && (
+            <div className="animate-in fade-in duration-150">
+              <DocumentManagerView />
+            </div>
+          )}
+          </main>
+        )}
       </div>
 
       {/* Global Interactive Modals */}

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { WhiteboardProvider } from '@/context/WhiteboardContext';
+import { ChatProvider } from '@/context/ChatContext';
+import { DocumentProvider } from '@/context/DocumentContext';
 import WhiteboardModal from '@/components/whiteboard/WhiteboardModal';
 
 const inter = Inter({
@@ -22,10 +24,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased dark`}>
       <body className="min-h-full bg-[#0b0f0d] text-[#f3f4f6] selection:bg-[#00e676]/20 selection:text-[#00e676]">
-        <WhiteboardProvider>
-          {children}
-          <WhiteboardModal />
-        </WhiteboardProvider>
+        <DocumentProvider>
+          <ChatProvider>
+            <WhiteboardProvider>
+              {children}
+              <WhiteboardModal />
+            </WhiteboardProvider>
+          </ChatProvider>
+        </DocumentProvider>
       </body>
     </html>
   );
