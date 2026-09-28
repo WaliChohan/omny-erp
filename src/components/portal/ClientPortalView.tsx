@@ -56,7 +56,17 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
     recordPayment,
     createHubDocument,
     tickets: storeTickets,
+    authenticatePortal,
+    getPortalForClient,
   } = useAgency();
+
+  const [authed, setAuthed] = useState(false);
+  const [loginUser, setLoginUser] = useState('portal.coolair');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const portalAccount = getPortalForClient(portalClientId);
+  const modules = portalAccount?.modules;
 
   const bundle = useMemo(
     () => getPortalBundle(portalClientId),
@@ -76,6 +86,22 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
   }, [bundle]);
 
   const [activeTab, setActiveTab] = useState<string>('overview');
+
+  const canSee = (key: keyof NonNullable<typeof modules>) => modules?.[key] !== false;
+
+  useEffect(() => {
+    if (!modules) return;
+    const order = [
+      { id: 'overview', ok: canSee('overview') },
+      { id: 'invoices', ok: canSee('invoices') },
+      { id: 'projects', ok: canSee('projects') || canSee('milestones') || canSee('docs') || canSee('files') },
+      { id: 'support', ok: canSee('tickets') || canSee('messages') },
+    ];
+    const visible = order.filter((t) => t.ok).map((t) => t.id);
+    if (visible.length && !visible.includes(activeTab)) {
+      setActiveTab(visible[0]);
+    }
+  }, [modules, activeTab]);
 
   // Modal states
   const [selectedInvoice, setSelectedInvoice] = useState<ClientInvoice | null>(null);
@@ -268,6 +294,64 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
   }, [files, fileFilter]);
 
   return (
+    !authed ? (
+    <div className="min-h-[70vh] flex items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-3xl bg-[#121915] border border-[#1e2a22] p-6 shadow-xl space-y-4">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[#2dd4bf] font-bold">Client portal</p>
+          <h2 className="text-xl font-black text-white mt-1">Portal sign-in</h2>
+          <p className="text-xs text-[#9ca3af] mt-1">
+            Use the username and password issued by OMNYSYNC. Demo: portal.coolair / CoolAir#2026
+          </p>
+        </div>
+        <label className="block text-[11px] text-[#9ca3af] space-y-1">
+          <span>Username</span>
+          <input
+            value={loginUser}
+            onChange={(e) => setLoginUser(e.target.value)}
+            className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-xl px-3 py-2 text-sm text-white"
+          />
+        </label>
+        <label className="block text-[11px] text-[#9ca3af] space-y-1">
+          <span>Password</span>
+          <input
+            type="password"
+            value={loginPass}
+            onChange={(e) => setLoginPass(e.target.value)}
+            className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-xl px-3 py-2 text-sm text-white"
+          />
+        </label>
+        {loginError && <p className="text-[11px] text-[#f87171]">{loginError}</p>}
+        <button
+          type="button"
+          onClick={() => {
+            const acc = authenticatePortal(loginUser, loginPass);
+            if (!acc) {
+              setLoginError('Invalid credentials or portal disabled.');
+              return;
+            }
+            setLoginError(null);
+            setAuthed(true);
+          }}
+          className="w-full py-2.5 rounded-xl bg-[#2dd4bf] text-[#052e24] text-sm font-black"
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          onClick={() => setAuthed(false)}
+          className="text-[11px] font-semibold text-[#9ca3af] hover:text-white px-2 py-1"
+        >
+          Sign out
+        </button>
+        {onBackToERP && (
+          <button type="button" onClick={onBackToERP} className="w-full text-[11px] text-[#9ca3af] hover:text-white">
+            Back to ERP
+          </button>
+        )}
+      </div>
+    </div>
+    ) : (
     <div className="min-h-screen bg-[#0b0f0d] flex flex-col text-[#f3f4f6]">
       {/* Streamlined Client Portal Header */}
       <div className="px-4 md:px-8 pt-4 flex flex-wrap items-center gap-2">
@@ -286,8 +370,10 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
         profile={profile}
         activeTab={activeTab}
         onTabChange={(t) => setActiveTab(t)}
-        onPayBalance={handlePayFullBalance}
+        onPayBalance={canSee('invoices') ? handlePayFullBalance : undefined}
         onBackToERP={onBackToERP}
+        modules={modules}
+        onLogout={() => setAuthed(false)}
       />
 
       {/* Main Portal View Canvas */}
@@ -295,7 +381,7 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
         {/* ========================================================================= */}
         {/* TAB 1: OVERVIEW & CLIENT COMMAND HUB                                       */}
         {/* ========================================================================= */}
-        {activeTab === 'overview' && (
+        {activeTab === 'overview' && canSee('overview') && (
           <div className="space-y-6 animate-in fade-in duration-200">
             {/* Top Welcome Banner */}
             <div className="bg-gradient-to-r from-[#121c16] via-[#101713] to-[#121c16] border border-[#1e2e24] p-6 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
@@ -553,7 +639,7 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
         {/* ========================================================================= */}
         {/* TAB 2: INVOICES & BILLING                                                 */}
         {/* ========================================================================= */}
-        {activeTab === 'invoices' && (
+        {activeTab === 'invoices' && canSee('invoices') && (
           <div className="space-y-6 animate-in fade-in duration-200">
             {/* Billing Stats Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -726,7 +812,7 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
         {/* ========================================================================= */}
         {/* TAB 3: PROJECTS & DELIVERABLES                                             */}
         {/* ========================================================================= */}
-        {activeTab === 'projects' && (
+        {activeTab === 'projects' && (canSee('projects') || canSee('milestones') || canSee('docs') || canSee('files')) && (
           <div className="space-y-6 animate-in fade-in duration-200">
             {/* Project Picker Pills */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -900,7 +986,7 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
         {/* ========================================================================= */}
         {/* TAB 4: SUPPORT & TICKET SYSTEM (WITH THREADED CHAT)                        */}
         {/* ========================================================================= */}
-        {activeTab === 'support' && (
+        {activeTab === 'support' && (canSee('tickets') || canSee('messages')) && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 animate-in fade-in duration-200 items-stretch">
             {/* Left Rail: Ticket List */}
             <div className="lg:col-span-5 bg-[#101713] border border-[#1b2a22] rounded-2xl p-4 flex flex-col space-y-3 shadow-xl max-h-[780px]">
@@ -1043,5 +1129,6 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
         onSubmit={handleCreateTicket}
       />
     </div>
+    )
   );
 }

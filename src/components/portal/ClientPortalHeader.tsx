@@ -15,6 +15,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { ClientProfile } from '@/data/portalData';
+import { PortalModuleKey } from '@/data/portalAccounts';
 
 interface ClientPortalHeaderProps {
   profile: ClientProfile;
@@ -22,6 +23,9 @@ interface ClientPortalHeaderProps {
   onTabChange: (tab: string) => void;
   onPayBalance?: () => void;
   onBackToERP?: () => void;
+  /** When set, only enabled portal modules render as tabs */
+  modules?: Partial<Record<PortalModuleKey, boolean>>;
+  onLogout?: () => void;
 }
 
 export default function ClientPortalHeader({
@@ -30,16 +34,34 @@ export default function ClientPortalHeader({
   onTabChange,
   onPayBalance,
   onBackToERP,
+  modules,
+  onLogout,
 }: ClientPortalHeaderProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+
+  const moduleForTab: Record<string, PortalModuleKey | PortalModuleKey[]> = {
+    overview: 'overview',
+    invoices: 'invoices',
+    projects: ['projects', 'milestones', 'docs', 'files'],
+    support: ['tickets', 'messages'],
+    activity: 'activity',
+  };
+
+  const isTabVisible = (id: string) => {
+    if (!modules) return true;
+    const keys = moduleForTab[id];
+    if (!keys) return true;
+    const list = Array.isArray(keys) ? keys : [keys];
+    return list.some((k) => modules[k] !== false);
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview & Hub' },
     { id: 'invoices', label: 'Invoices & Billing' },
     { id: 'projects', label: 'Projects & Deliverables' },
     { id: 'support', label: 'Support & Messaging' },
-  ];
+  ].filter((t) => isTabVisible(t.id));
 
   return (
     <header className="bg-[#0a0f0d] border-b border-[#18261f] sticky top-0 z-40 select-none shadow-xl">
@@ -166,6 +188,15 @@ export default function ClientPortalHeader({
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Return to ERP Command</span>
+                  </button>
+                )}
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-[#1a1414] hover:bg-[#2a1a1a] text-[#f87171] text-xs font-semibold transition-colors"
+                  >
+                    Sign out of portal
                   </button>
                 )}
               </div>

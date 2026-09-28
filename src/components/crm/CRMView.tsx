@@ -182,6 +182,7 @@ export default function CRMView() {
     clients,
     leads: agencyLeads,
     importLeads,
+    deleteLead,
   } = useAgency();
   const [crmSubTab, setCrmSubTab] = useState<'workspace' | 'pipeline' | 'database'>('workspace');
   const [activeFilter, setActiveFilter] = useState<LeadFilter>('All');
@@ -496,6 +497,12 @@ export default function CRMView() {
         onConvertToClient={handleConvertToClient}
         onCreateQuote={handleCreateQuote}
         onCreateProject={handleCreateProject}
+        onDelete={(lead) => {
+          if (!confirm(`Delete lead ${lead.name}?`)) return;
+          deleteLead(lead.id);
+          setIsDetailModalOpen(false);
+          setActiveDetailLead(null);
+        }}
         onCreateDoc={(lead) =>
           createDocument({
             docType: 'sow',

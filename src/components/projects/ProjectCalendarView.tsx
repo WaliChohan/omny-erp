@@ -19,11 +19,13 @@ import { CalendarEventItem, OMNYSYNC_PROJECTS } from '@/data/projectsData';
 interface ProjectCalendarViewProps {
   projectId?: string; // If provided, scoped to specific project
   onClose?: () => void;
+  externalEvents?: CalendarEventItem[];
+  onEventClick?: (event: CalendarEventItem) => void;
 }
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function ProjectCalendarView({ projectId, onClose }: ProjectCalendarViewProps) {
+export default function ProjectCalendarView({ projectId, onClose, externalEvents, onEventClick }: ProjectCalendarViewProps) {
   // Calendar date navigation (Defaults to current month)
   const [currentDate, setCurrentDate] = useState(new Date(2025, 9, 1)); // Oct 2025
   const [viewMode, setViewMode] = useState<'month' | 'agenda'>('month');
@@ -149,13 +151,18 @@ export default function ProjectCalendarView({ projectId, onClose }: ProjectCalen
 
   // Filter events
   const filteredEvents = useMemo(() => {
-    return events.filter((ev) => {
+    const merged = [...events, ...(externalEvents || [])];
+    const seen = new Set<string>();
+    return merged.filter((ev) => {
+      if (seen.has(ev.id)) return false;
+      seen.add(ev.id);
       if (selectedProjectFilter !== 'all' && ev.projectId !== selectedProjectFilter) {
         return false;
       }
+      if (projectId && ev.projectId && ev.projectId !== projectId) return false;
       return true;
     });
-  }, [events, selectedProjectFilter]);
+  }, [events, selectedProjectFilter, externalEvents, projectId]);
 
   // Navigate month
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
@@ -356,7 +363,13 @@ export default function ProjectCalendarView({ projectId, onClose }: ProjectCalen
 
           <div className="divide-y divide-[#1b2620]">
             {filteredEvents.map((ev) => (
-              <div key={ev.id} className="py-3 flex items-center justify-between gap-4">
+              <div
+                key={ev.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onEventClick?.(ev)}
+                className="py-3 flex items-center justify-between gap-4 cursor-pointer hover:bg-[#141d18] rounded-xl px-2 -mx-2"
+              >
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-10 rounded-full ${ev.color}`} />
                   <div>

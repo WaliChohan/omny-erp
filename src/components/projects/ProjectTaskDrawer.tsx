@@ -17,7 +17,8 @@ interface ProjectTaskDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (task: AgencyTask) => void;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
+  mode?: 'create' | 'edit';
 }
 
 export default function ProjectTaskDrawer({
@@ -26,6 +27,7 @@ export default function ProjectTaskDrawer({
   onClose,
   onSave,
   onDelete,
+  mode = 'edit',
 }: ProjectTaskDrawerProps) {
   const [draft, setDraft] = useState<AgencyTask | null>(null);
   const [checkText, setCheckText] = useState('');
@@ -74,31 +76,41 @@ export default function ProjectTaskDrawer({
     <SideDrawer
       isOpen={isOpen}
       onClose={onClose}
-      title="Task details"
+      title={mode === 'create' ? 'Create task' : 'Task details'}
       width="max-w-lg"
       footer={
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              onDelete(draft.id);
-              onClose();
-            }}
-            className="px-3 py-2 rounded-lg border border-[#7f1d1d]/50 text-[#f87171] text-xs font-semibold"
-          >
-            Delete
-          </button>
+          {mode === 'edit' && onDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirm('Delete this task permanently?')) return;
+                onDelete(draft.id);
+                onClose();
+              }}
+              className="px-3 py-2 rounded-lg border border-[#7f1d1d]/50 text-[#f87171] text-xs font-semibold"
+            >
+              Delete
+            </button>
+          )}
           <button
             type="button"
             onClick={save}
-            className="ml-auto px-4 py-2 rounded-lg bg-[#2dd4bf] text-[#0a0f0d] text-xs font-bold"
+            disabled={!draft.title.trim()}
+            className="ml-auto px-4 py-2 rounded-lg bg-[#2dd4bf] text-[#0a0f0d] text-xs font-bold disabled:opacity-40"
           >
-            Save task
+            {mode === 'create' ? 'Create task' : 'Save task'}
           </button>
         </div>
       }
     >
       <div className="space-y-4 text-xs">
+        {draft.updatedAt && (
+          <p className="text-[10px] text-[#6b7280]">
+            Last updated {new Date(draft.updatedAt).toLocaleString()}
+            {draft.updatedBy ? ` · ${draft.updatedBy}` : ''}
+          </p>
+        )}
         <div>
           <label className="text-[10px] uppercase tracking-wider text-[#6b7280] font-bold">Title</label>
           <input

@@ -1,24 +1,47 @@
 'use client';
 
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  Columns3,
+  FilePlus2,
+  FileText,
+  Flag,
+  LayoutGrid,
+  LayoutList,
+  MessageSquare,
+  PenTool,
+  Plus,
+  Receipt,
+  ScrollText,
+  Search,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import { useAgency } from '@/context/AgencyContext';
 import type { AgencyTask, TaskStatus } from '@/data/tasksData';
-
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, FileText, LayoutGrid, Plus, Trash2, Users, PenTool, Check, X, Sparkles, Link as LinkIcon, Download, AlertCircle, TrendingUp, Tag, Kanban, Edit2, Layers, RotateCcw, MessageSquare, FilePlus2, Receipt, ScrollText, LayoutList, Columns3 } from 'lucide-react';
 import {
+  CalendarEventItem,
   ProjectCardItem,
-  ProjectTask,
-  TeamMember,
+  ProjectMilestone,
   TEAM_MEMBERS,
-  GOOGLE_DRIVE_FILES,
+  TeamMember,
 } from '@/data/projectsData';
-import { COMMERCIAL_DOCUMENTS, CommercialDocument } from '@/data/financialData';
-import ProjectCalendarView from '@/components/projects/ProjectCalendarView';
-import ProjectChatPanel from '@/components/projects/ProjectChatPanel';
+import { formatPKR } from '@/data/financialData';
+import ProjectWorkspaceNav, {
+  ProjectNavGroup,
+  ProjectTabId,
+} from '@/components/projects/ProjectWorkspaceNav';
 import ProjectKanbanBoard from '@/components/projects/ProjectKanbanBoard';
 import ProjectTaskDrawer from '@/components/projects/ProjectTaskDrawer';
-import FolderCard from '@/components/common/FolderCard';
-import GooeyFolderTabs, { TabItem } from '@/components/ui/GooeyFolderTabs';
+import ProjectChatPanel from '@/components/projects/ProjectChatPanel';
+import ProjectMilestonesPanel from '@/components/projects/ProjectMilestonesPanel';
+import ProjectTeamPanel from '@/components/projects/ProjectTeamPanel';
+import ProjectWhiteboardPanel from '@/components/projects/ProjectWhiteboardPanel';
+import ProjectCalendarView from '@/components/projects/ProjectCalendarView';
 
 interface ProjectDetailWorkspaceProps {
   project: ProjectCardItem;
@@ -28,6 +51,25 @@ interface ProjectDetailWorkspaceProps {
   onOpenClient?: () => void;
 }
 
+function blankTask(project: ProjectCardItem): AgencyTask {
+  return {
+    id: '',
+    title: '',
+    description: '',
+    category: 'Dev',
+    priority: 'Medium',
+    dueDate: project.deadline || new Date().toISOString().slice(0, 10),
+    completed: false,
+    status: 'todo',
+    createdAt: new Date().toISOString().slice(0, 10),
+    assignee: project.team[0] || TEAM_MEMBERS[0],
+    projectId: project.id,
+    clientId: project.clientId,
+    checklist: [],
+    comments: [],
+  };
+}
+
 export default function ProjectDetailWorkspace({
   project: initialProject,
   onBack,
@@ -35,13 +77,7 @@ export default function ProjectDetailWorkspace({
   onCreateInvoice,
   onOpenClient,
 }: ProjectDetailWorkspaceProps) {
-  const [project, setProject] = useState<ProjectCardItem>(initialProject);
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'team' | 'tasks' | 'timeline' | 'calendar' | 'docs' | 'chat' | 'whiteboard'
-  >('overview');
-
   const agency = useAgency();
-  const seededRef = useRef(false);
   const {
     getTasksForProject,
     addTask,
@@ -52,13 +88,31 @@ export default function ProjectDetailWorkspace({
     setActiveHubDocument,
     navigate,
     getDocsForProject,
+    getHubDocsForProject,
     clients,
+    updateProject,
   } = agency;
 
-  // Agency-backed project tasks (ClickUp-style board data)
-  const tasks: AgencyTask[] = getTasksForProject(project.id);
+  const [project, setProject] = useState<ProjectCardItem>(initialProject);
+  const [activeTab, setActiveTab] = useState<ProjectTabId>('overview');
+  const seededRef = useRef(false);
 
-  // Seed once if project has no agency tasks yet
+  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban'>('kanban');
+  const [taskSearch, setTaskSearch] = useState('');
+  const [taskFilterAssignee, setTaskFilterAssignee] = useState('all');
+  const [taskFilterStatus, setTaskFilterStatus] = useState<'all' | TaskStatus>('all');
+  const [taskFilterPriority, setTaskFilterPriority] = useState<'all' | 'High' | 'Medium' | 'Low'>('all');
+  const [editingTask, setEditingTask] = useState<AgencyTask | null>(null);
+  const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('edit');
+  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setProject(initialProject);
+  }, [initialProject]);
+
+  const tasks = getTasksForProject(project.id);
+
   useEffect(() => {
     if (seededRef.current) return;
     if (getTasksForProject(project.id).length > 0) {
@@ -69,7 +123,6 @@ export default function ProjectDetailWorkspace({
       ? project.tasks
       : [
           {
-            id: 'seed',
             title: 'Discovery & scope lock',
             priority: 'High' as const,
             dueDate: project.deadline,
@@ -78,111 +131,145 @@ export default function ProjectDetailWorkspace({
             assignee: project.team[0] || TEAM_MEMBERS[0],
           },
           {
-            id: 'seed2',
             title: 'Build milestone 1 deliverable',
             priority: 'High' as const,
             dueDate: project.deadline,
             completed: false,
             status: 'in_progress' as const,
-            assignee: project.team[1] || TEAM_MEMBERS[1] || TEAM_MEMBERS[0],
+            assignee: project.team[1] || project.team[0] || TEAM_MEMBERS[0],
           },
         ];
-    seed.forEach((t) => {
+    seed.forEach((t: any) => {
       addTask({
         title: t.title,
-        description: (t as any).description,
+        description: t.description,
         category: 'Dev',
         priority: t.priority,
         dueDate: t.dueDate,
-        completed: t.completed,
-        status: (t as any).status || (t.completed ? 'done' : 'todo'),
+        completed: !!t.completed,
+        status: t.status || (t.completed ? 'done' : 'todo'),
         assignee: t.assignee,
         projectId: project.id,
         clientId: project.clientId,
+        checklist: [],
+        comments: [],
       });
     });
+    seededRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
-  // New task modal
-  const [isAddingTask, setIsAddingTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
-  const [newTaskDueDate, setNewTaskDueDate] = useState(project.deadline);
-  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>(
-    project.team[0]?.id || TEAM_MEMBERS[0].id
-  );
+  const doneCount = tasks.filter((t) => t.status === 'done' || t.completed).length;
 
-  // Add team member modal
-  const [isAddingMember, setIsAddingMember] = useState(false);
+  // Live progress from tasks (depend on counts, not array identity)
+  useEffect(() => {
+    const total = tasks.length;
+    const progressPercent = total > 0 ? Math.round((doneCount / total) * 100) : project.progressPercent || 0;
+    if (progressPercent === project.progressPercent && total === (project.tasksCount || 0)) return;
+    const next = {
+      ...project,
+      progressPercent,
+      tasksCount: total,
+      updatedAt: new Date().toISOString().slice(0, 10),
+    };
+    setProject(next);
+    onUpdateProject?.(next);
+    updateProject(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id, doneCount, tasks.length]);
 
-  // Link Doc modal
-  const [isLinkingDoc, setIsLinkingDoc] = useState(false);
-  const [selectedDocIdToLink, setSelectedDocIdToLink] = useState('');
-
-  // Project Whiteboard Canvas state
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawColor, setDrawColor] = useState('#2dd4bf');
-  const [drawSize, setDrawSize] = useState(3);
-  const [stickyNotes, setStickyNotes] = useState<
-    { id: string; text: string; x: number; y: number; color: string }[]
-  >([
-    { id: 'sn-1', text: 'Define Sprint 2 Scope & Acceptance Criteria', x: 40, y: 40, color: 'bg-amber-400' },
-    { id: 'sn-2', text: 'Security review for Bank API Webhooks', x: 260, y: 40, color: 'bg-emerald-400' },
-  ]);
-  const [newStickyText, setNewStickyText] = useState('');
-
-  // Task filter inside project
-  const [taskFilterAssignee, setTaskFilterAssignee] = useState<string>('all');
-  const [taskFilterStatus, setTaskFilterStatus] = useState<'all' | 'pending' | 'completed' | TaskStatus>('all');
-  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban'>('kanban');
-  const [editingTask, setEditingTask] = useState<AgencyTask | null>(null);
-  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
-
-  // Compute progress
-  const completedTasksCount = tasks.filter((t) => t.completed).length;
-  const progressPercent =
-    tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : project.progressPercent;
-
-  // Days remaining calculation
-  const daysRemaining = useMemo(() => {
-    const deadlineDate = new Date(project.deadline).getTime();
-    const now = new Date().getTime();
-    const diff = Math.ceil((deadlineDate - now) / (1000 * 3600 * 24));
-    return diff > 0 ? diff : 0;
-  }, [project.deadline]);
-
-  // Linked Docs (agency commercial docs + optional legacy links)
-  const linkedCommercialDocs = useMemo(() => {
-    const fromAgency = getDocsForProject(project.id);
-    const legacy = COMMERCIAL_DOCUMENTS.filter(
-      (d) =>
-        d.projectId === project.id ||
-        (project.linkedDocIds && project.linkedDocIds.includes(d.id))
-    );
-    const map = new Map<string, CommercialDocument>();
-    [...legacy, ...fromAgency].forEach((d) => map.set(d.id, d));
-    return Array.from(map.values());
-  }, [project, getDocsForProject]);
-
-  const linkedDriveFiles = useMemo(() => {
-    return GOOGLE_DRIVE_FILES.filter(
-      (f) => f.projectId === project.id || (project.linkedDocIds && project.linkedDocIds.includes(f.id))
-    );
-  }, [project]);
-
-  // Handle task completion toggle
-  const toggleTaskCompleted = (id: string) => {
-    const t = tasks.find((x) => x.id === id);
-    if (!t) return;
-    const completed = !t.completed;
-    updateTask({
-      ...t,
-      completed,
-      status: completed ? 'done' : t.status === 'done' ? 'todo' : t.status,
-    });
+  const persistProject = (next: ProjectCardItem) => {
+    const stamped = { ...next, updatedAt: new Date().toISOString().slice(0, 10) };
+    setProject(stamped);
+    onUpdateProject?.(stamped);
+    updateProject(stamped);
   };
+
+  const commercialDocs = getDocsForProject(project.id);
+  const hubDocs = getHubDocsForProject(project.id);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (taskFilterAssignee !== 'all' && t.assignee?.id !== taskFilterAssignee) return false;
+      if (taskFilterStatus !== 'all') {
+        const st = t.status || (t.completed ? 'done' : 'todo');
+        if (st !== taskFilterStatus) return false;
+      }
+      if (taskFilterPriority !== 'all' && t.priority !== taskFilterPriority) return false;
+      if (taskSearch.trim()) {
+        const q = taskSearch.toLowerCase();
+        const blob = `${t.title} ${t.description || ''}`.toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [tasks, taskFilterAssignee, taskFilterStatus, taskFilterPriority, taskSearch]);
+
+  const milestones = project.milestones || [];
+
+  const calendarEvents: CalendarEventItem[] = useMemo(() => {
+    const taskEv = tasks.map((t) => ({
+      id: `task-${t.id}`,
+      time: 'Due',
+      tag: 'Task',
+      title: t.title,
+      color:
+        t.priority === 'High' ? 'bg-[#f87171]' : t.priority === 'Medium' ? 'bg-[#fbbf24]' : 'bg-[#34d399]',
+      date: t.dueDate,
+      projectId: project.id,
+      assignee: t.assignee?.name,
+    }));
+    const msEv = milestones.map((m) => ({
+      id: `ms-${m.id}`,
+      time: 'Milestone',
+      tag: 'Milestone',
+      title: m.title,
+      color: 'bg-[#a855f7]',
+      date: m.dueDate,
+      projectId: project.id,
+    }));
+    return [...taskEv, ...msEv];
+  }, [tasks, milestones, project.id]);
+
+  const navGroups: ProjectNavGroup[] = [
+    {
+      id: 'plan',
+      label: 'Plan',
+      tabs: [
+        { id: 'overview', label: 'Overview', icon: LayoutGrid },
+        { id: 'milestones', label: 'Milestones', icon: Flag, badge: milestones.length },
+        { id: 'calendar', label: 'Calendar', icon: Calendar },
+      ],
+    },
+    {
+      id: 'execute',
+      label: 'Execute',
+      tabs: [
+        { id: 'tasks', label: 'Tasks', icon: CheckCircle2, badge: tasks.length },
+        { id: 'team', label: 'Team', icon: Users, badge: project.team.length },
+      ],
+    },
+    {
+      id: 'collab',
+      label: 'Collaborate',
+      tabs: [
+        { id: 'chat', label: 'Chat', icon: MessageSquare },
+        { id: 'whiteboard', label: 'Whiteboard', icon: PenTool },
+      ],
+    },
+    {
+      id: 'deliver',
+      label: 'Deliver',
+      tabs: [
+        {
+          id: 'docs',
+          label: 'Docs',
+          icon: FileText,
+          badge: commercialDocs.length + hubDocs.length,
+        },
+      ],
+    },
+  ];
 
   const setTaskStatus = (id: string, status: TaskStatus) => {
     const t = tasks.find((x) => x.id === id);
@@ -190,27 +277,56 @@ export default function ProjectDetailWorkspace({
     updateTask({ ...t, status, completed: status === 'done' });
   };
 
-  // Handle add task
-  const handleAddTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle.trim()) return;
+  const openCreateTask = () => {
+    setDrawerMode('create');
+    setEditingTask(blankTask(project));
+    setIsTaskDrawerOpen(true);
+  };
 
-    const assignee =
-      TEAM_MEMBERS.find((m) => m.id === newTaskAssigneeId) || project.team[0] || TEAM_MEMBERS[0];
+  const openEditTask = (t: AgencyTask) => {
+    setDrawerMode('edit');
+    setEditingTask(t);
+    setIsTaskDrawerOpen(true);
+  };
 
-    addTask({
-      title: newTaskTitle.trim(),
-      category: 'Dev',
-      priority: newTaskPriority,
-      dueDate: newTaskDueDate || project.deadline,
-      completed: false,
-      status: 'todo',
-      assignee,
-      projectId: project.id,
-      clientId: project.clientId,
-    });
-    setIsAddingTask(false);
-    setNewTaskTitle('');
+  const handleSaveTask = (t: AgencyTask) => {
+    if (drawerMode === 'create' || !t.id) {
+      addTask({
+        title: t.title,
+        description: t.description,
+        category: t.category || 'Dev',
+        priority: t.priority,
+        dueDate: t.dueDate,
+        completed: t.status === 'done',
+        status: t.status || 'todo',
+        assignee: t.assignee,
+        projectId: project.id,
+        clientId: project.clientId,
+        checklist: t.checklist || [],
+        comments: t.comments || [],
+      });
+    } else {
+      updateTask({ ...t, projectId: project.id, clientId: project.clientId });
+    }
+  };
+
+  const clearTaskFilters = () => {
+    setTaskSearch('');
+    setTaskFilterAssignee('all');
+    setTaskFilterStatus('all');
+    setTaskFilterPriority('all');
+  };
+
+  const bulkSetStatus = (status: TaskStatus) => {
+    selectedIds.forEach((id) => setTaskStatus(id, status));
+    setSelectedIds([]);
+  };
+
+  const bulkDelete = () => {
+    if (!selectedIds.length) return;
+    if (!confirm(`Delete ${selectedIds.length} task(s)?`)) return;
+    selectedIds.forEach((id) => deleteTask(id));
+    setSelectedIds([]);
   };
 
   const createProjectCommercialDoc = (docType: 'sow' | 'quotation' | 'invoice') => {
@@ -226,14 +342,8 @@ export default function ProjectDetailWorkspace({
             ? `Quote — ${project.title}`
             : `Invoice — ${project.title}`,
       amount: project.budget,
-      description:
-        docType === 'sow'
-          ? `Statement of Work for ${project.title}`
-          : docType === 'quotation'
-            ? `Quotation for ${project.title}`
-            : `Milestone invoice for ${project.title}`,
+      description: `${docType.toUpperCase()} for ${project.title}`,
     });
-
     const hubType = docType === 'sow' ? 'proposal' : docType === 'quotation' ? 'quotation' : 'invoice';
     const hub = createHubDocument({
       docNumber: commercial.docNumber,
@@ -275,7 +385,7 @@ export default function ProjectDetailWorkspace({
                 id: 's2',
                 sectionNumber: '02',
                 title: 'Deliverables',
-                content: 'Milestone-based deliverables as listed in the commercial line items. Acceptance within 5 business days.',
+                content: 'Milestone-based deliverables as listed in the commercial line items.',
               },
               {
                 id: 's3',
@@ -287,7 +397,7 @@ export default function ProjectDetailWorkspace({
                 id: 's4',
                 sectionNumber: '04',
                 title: 'Fees & Payment',
-                content: 'Fees in PKR. Kickoff deposit + milestone invoices. Net 15. IP transfers on full payment.',
+                content: 'Fees in PKR. Kickoff deposit + milestone invoices. Net 15.',
               },
             ]
           : undefined,
@@ -296,7 +406,7 @@ export default function ProjectDetailWorkspace({
           id: 'item-1',
           itemType: 'service',
           skuOrCode: docType.toUpperCase(),
-          description: commercial.items[0]?.description || project.title,
+          description: project.title,
           quantity: 1,
           unitName: 'project',
           unitPrice: project.budget,
@@ -310,507 +420,242 @@ export default function ProjectDetailWorkspace({
     navigate({ tab: 'documents', focus: { kind: 'document', id: hub.id } });
   };
 
-  // Handle add member to project
-  const handleAddMemberToProject = (member: TeamMember) => {
-    if (!project.team.some((m) => m.id === member.id)) {
-      const updatedTeam = [...project.team, member];
-      const updatedProj = { ...project, team: updatedTeam, avatarsCount: updatedTeam.length };
-      setProject(updatedProj);
-      if (onUpdateProject) onUpdateProject(updatedProj);
-    }
-    setIsAddingMember(false);
-  };
+  const taskCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    tasks.forEach((t) => {
+      if (t.assignee?.id) map[t.assignee.id] = (map[t.assignee.id] || 0) + 1;
+    });
+    return map;
+  }, [tasks]);
 
-  // Handle link document
-  const handleLinkDoc = () => {
-    if (!selectedDocIdToLink) return;
-    const currentLinked = project.linkedDocIds || [];
-    if (!currentLinked.includes(selectedDocIdToLink)) {
-      const updated = { ...project, linkedDocIds: [...currentLinked, selectedDocIdToLink] };
-      setProject(updated);
-      if (onUpdateProject) onUpdateProject(updated);
-    }
-    setIsLinkingDoc(false);
-  };
-
-  // Whiteboard Canvas Drawing Logic (persisted per project)
-  useEffect(() => {
-    if (activeTab !== 'whiteboard') return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const key = `omnysync_wb_${project.id}`;
-    try {
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0);
-        };
-        img.src = saved;
-        return;
-      }
-    } catch {
-      /* ignore */
-    }
-    ctx.fillStyle = '#101613';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, [activeTab, project.id]);
-
-  const persistWhiteboard = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    try {
-      localStorage.setItem(`omnysync_wb_${project.id}`, canvas.toDataURL('image/png'));
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.strokeStyle = drawColor;
-    ctx.lineWidth = drawSize;
-    ctx.lineCap = 'round';
-    setIsDrawing(true);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    persistWhiteboard();
-  };
-
-  const clearWhiteboard = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = '#101613';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    try {
-      localStorage.removeItem(`omnysync_wb_${project.id}`);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const addStickyNote = () => {
-    if (!newStickyText.trim()) return;
-    const newNote = {
-      id: `sn-${Date.now()}`,
-      text: newStickyText,
-      x: 50 + (stickyNotes.length % 4) * 180,
-      y: 120 + Math.floor(stickyNotes.length / 4) * 140,
-      color: 'bg-amber-300',
-    };
-    setStickyNotes([...stickyNotes, newNote]);
-    setNewStickyText('');
-  };
-
-  const removeStickyNote = (id: string) => {
-    setStickyNotes(stickyNotes.filter((n) => n.id !== id));
-  };
-
-  // Filtered tasks
-  const filteredTasks = tasks.filter((t) => {
-    if (taskFilterAssignee !== 'all' && t.assignee?.id !== taskFilterAssignee) return false;
-    if (taskFilterStatus !== 'all') {
-      if (taskFilterStatus === 'completed' && !t.completed) return false;
-      if (taskFilterStatus === 'pending' && t.completed) return false;
-    }
-    return true;
-  });
-
-  const workspaceTabs: TabItem[] = [
-    { id: 'overview', label: 'Workspace Dashboard', icon: LayoutGrid },
-    { id: 'team', label: 'Team Members', icon: Users, badge: project.team.length },
-    { id: 'tasks', label: 'Tasks & To-Do', icon: CheckCircle2, badge: tasks.length },
-    { id: 'timeline', label: 'Milestone Timeline', icon: Clock },
-    { id: 'calendar', label: 'Separate Calendar View', icon: Calendar },
-    { id: 'docs', label: 'Project Docs', icon: FileText, badge: linkedCommercialDocs.length + linkedDriveFiles.length },
-    { id: 'chat', label: 'Project Chat', icon: MessageSquare },
-    { id: 'whiteboard', label: 'Project Whiteboard', icon: PenTool },
-  ];
+  const filtersActive =
+    taskSearch ||
+    taskFilterAssignee !== 'all' ||
+    taskFilterStatus !== 'all' ||
+    taskFilterPriority !== 'all';
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-150">
-      <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
-        {onOpenClient && (
-          <button
-            onClick={onOpenClient}
-            className="px-3 py-1.5 rounded-lg bg-[#141e18] border border-[#223328] text-[11px] font-bold text-[#9ca3af] hover:text-white"
-          >
-            Open client
-          </button>
-        )}
-        {onCreateInvoice && (
-          <button
-            onClick={onCreateInvoice}
-            className="px-3 py-1.5 rounded-lg bg-[#2dd4bf] text-[#052e24] text-[11px] font-bold"
-          >
-            Bill milestone
-          </button>
-        )}
-      </div>
-
-      {/* ── Top Navigation Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#141e18] border border-[#223328] hover:border-[#2dd4bf] text-xs font-bold text-white transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 text-[#2dd4bf]" />
-          <span>Back to Projects Hub</span>
-        </button>
-
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#18261e] text-[#2dd4bf] border border-[#23382d]">
-            Project ID: {project.id}
-          </span>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30">
-            Status: On Track
-          </span>
-        </div>
-      </div>
-
-      {/* ── Project Header Card ───────────────────────────────────────────── */}
-      <div className={`${project.bgGradient} rounded-3xl p-6 md:p-8 text-white shadow-2xl relative overflow-hidden`}>
-        <div className="relative z-10 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/20 backdrop-blur-md">
+    <div className="space-y-5 animate-in fade-in duration-200">
+      {/* Banner */}
+      <div className={`relative overflow-hidden rounded-3xl border border-white/10 ${project.bgGradient} p-6 shadow-xl`}>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+        <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/70 hover:text-white mb-3"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> All projects
+            </button>
+            <h1 className="text-2xl font-black text-white tracking-tight">{project.title}</h1>
+            <p className="text-sm text-white/75 mt-1 max-w-2xl">{project.description}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-black/25 text-white/90 border border-white/10">
                 {project.category}
               </span>
-              <h1 className="text-3xl font-black tracking-tight mt-2">{project.title}</h1>
-              <p className="text-xs text-white/80 mt-1 max-w-2xl">
-                {project.description || 'Omnysync enterprise project workspace.'}
-              </p>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-black/25 text-white/90 border border-white/10 capitalize">
+                {project.status || 'active'}
+              </span>
               {project.client && (
-                <p className="text-xs text-white/90 font-semibold mt-1">
-                  Client: <span className="underline">{project.client}</span>
-                </p>
+                <button
+                  type="button"
+                  onClick={onOpenClient}
+                  className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#2dd4bf]/20 text-[#b8ff00] border border-[#2dd4bf]/30 hover:bg-[#2dd4bf]/30"
+                >
+                  {project.client}
+                </button>
               )}
-            </div>
-
-            {/* Quick KPI stats in header */}
-            <div className="flex items-center gap-3">
-              <div className="bg-black/30 backdrop-blur-md rounded-2xl p-3.5 border border-white/20 text-center min-w-[100px]">
-                <span className="text-[10px] text-white/70 uppercase font-bold tracking-wider block">Deadline</span>
-                <span className="text-base font-black font-mono">{daysRemaining}d left</span>
-                <span className="text-[10px] text-white/60 block">{project.deadline}</span>
-              </div>
-
-              <div className="bg-black/30 backdrop-blur-md rounded-2xl p-3.5 border border-white/20 text-center min-w-[100px]">
-                <span className="text-[10px] text-white/70 uppercase font-bold tracking-wider block">Budget</span>
-                <span className="text-base font-black font-mono">${(project.budget || 30000).toLocaleString()}</span>
-                <span className="text-[10px] text-white/60 block">${(project.spent || 0).toLocaleString()} spent</span>
-              </div>
+              <span className="text-[10px] font-mono text-white/70 px-2.5 py-1">
+                Due {project.deadline}
+              </span>
             </div>
           </div>
-
-          {/* Progress Bar */}
-          <div className="space-y-1.5 pt-2">
-            <div className="flex items-center justify-between text-xs font-bold">
-              <span>Overall Completion</span>
-              <span className="font-mono">{progressPercent}%</span>
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wider text-white/60 font-bold">Progress</p>
+              <p className="text-3xl font-black text-white font-mono">{project.progressPercent}%</p>
+              <p className="text-[11px] text-white/70">
+                {doneCount}/{tasks.length} tasks done · {formatPKR(project.spent, true)} /{' '}
+                {formatPKR(project.budget, true)}
+              </p>
             </div>
-            <div className="w-full bg-black/30 h-2.5 rounded-full overflow-hidden p-0.5 border border-white/20">
+            <div className="w-48 h-2 rounded-full bg-black/30 overflow-hidden">
               <div
-                className="bg-white h-full rounded-full transition-all duration-500 shadow-sm"
-                style={{ width: `${progressPercent}%` }}
+                className="h-full rounded-full bg-[#b8ff00]"
+                style={{ width: `${Math.min(100, project.progressPercent)}%` }}
               />
             </div>
+            {onCreateInvoice && (
+              <button
+                type="button"
+                onClick={onCreateInvoice}
+                className="mt-1 px-3 py-1.5 rounded-xl bg-white/15 text-white text-[11px] font-bold border border-white/20 hover:bg-white/25"
+              >
+                Quick invoice
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── Gooey Folder Tabs Container (Organic SVG Meltdown) ──────────────── */}
-      <GooeyFolderTabs
-        tabs={workspaceTabs}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as any)}
-      >
-        {/* ── TAB 1: WORKSPACE DASHBOARD / OVERVIEW ─────────────────────────── */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setActiveTab('tasks'); setTaskViewMode('kanban'); }} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
-                Open task board
-              </button>
-              <button type="button" onClick={() => setActiveTab('chat')} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
-                Project chat
-              </button>
-              <button type="button" onClick={() => setActiveTab('whiteboard')} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
-                Whiteboard
-              </button>
-              <button type="button" onClick={() => setActiveTab('docs')} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
-                Docs & SOW
-              </button>
-              {project.clientId && onOpenClient && (
-                <button type="button" onClick={onOpenClient} className="px-3 py-2 rounded-xl bg-[#2dd4bf]/10 border border-[#2dd4bf]/30 text-[11px] font-bold text-[#2dd4bf]">
-                  Open client
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FolderCard
-                onOpenDetail={() => setActiveTab('tasks')}
-                themeColor="teal"
-                fillColor="#151e19"
-                borderColor="#223328"
-                buttonSize="md"
-                minHeight="min-h-[160px]"
-                actionTooltip="View Full Task Board"
-                avatar={
-                  <span className="text-xs font-bold text-[#9ca3af] uppercase tracking-wider">Completed Tasks</span>
-                }
-              >
-                <div className="pt-2">
-                  <p className="text-3xl font-black text-white font-mono">
-                    {completedTasksCount} / {tasks.length}
-                  </p>
-                  <p className="text-xs text-[#2dd4bf] mt-1 font-semibold">{progressPercent}% verified complete</p>
-                </div>
-              </FolderCard>
+      <ProjectWorkspaceNav groups={navGroups} activeTab={activeTab} onTabChange={setActiveTab} />
 
-              <FolderCard
-                onOpenDetail={() => setActiveTab('team')}
-                themeColor="teal"
-                fillColor="#151e19"
-                borderColor="#223328"
-                buttonSize="md"
-                minHeight="min-h-[160px]"
-                actionTooltip="Manage Assigned Team"
-                avatar={
-                  <span className="text-xs font-bold text-[#9ca3af] uppercase tracking-wider">Assigned Team</span>
-                }
-              >
-                <div className="pt-2">
-                  <p className="text-3xl font-black text-white font-mono">{project.team.length} Members</p>
-                  <div className="flex items-center -space-x-1.5 mt-2">
-                    {project.team.map((m) => (
-                      <div
-                        key={m.id}
-                        title={`${m.name} - ${m.role}`}
-                        className={`w-7 h-7 rounded-full ${m.color} text-white text-[10px] font-bold flex items-center justify-center border-2 border-[#151e19] shadow-sm`}
-                      >
-                        {m.avatar}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </FolderCard>
-
-              <FolderCard
-                onOpenDetail={() => setActiveTab('docs')}
-                themeColor="blue"
-                fillColor="#151e19"
-                borderColor="#223328"
-                buttonSize="md"
-                minHeight="min-h-[160px]"
-                actionTooltip="View SOW & Invoices"
-                avatar={
-                  <span className="text-xs font-bold text-[#9ca3af] uppercase tracking-wider">Linked Contracts</span>
-                }
-              >
-                <div className="pt-2">
-                  <p className="text-3xl font-black text-white font-mono">
-                    {linkedCommercialDocs.length + linkedDriveFiles.length} Docs
-                  </p>
-                  <span className="text-xs text-[#38bdf8] font-bold mt-1 block group-hover:underline">
-                    View SOW & Invoices &rarr;
-                  </span>
-                </div>
-              </FolderCard>
-            </div>
-
-            {/* Quick Tasks Preview */}
-            <div className="bg-[#151e19] border border-[#223328] rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[#1b2620]">
-                <h3 className="text-sm font-bold text-white tracking-tight">Active Sprint Deliverables</h3>
+      {/* OVERVIEW */}
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'tasks' as const, label: 'Open task board' },
+              { id: 'milestones' as const, label: 'Milestones' },
+              { id: 'chat' as const, label: 'Project chat' },
+              { id: 'whiteboard' as const, label: 'Whiteboard' },
+              { id: 'docs' as const, label: 'Docs & SOW' },
+            ].map((a) => (
               <button
-                onClick={() => setActiveTab('tasks')}
-                className="text-xs text-[#2dd4bf] hover:underline font-semibold"
+                key={a.id}
+                type="button"
+                onClick={() => setActiveTab(a.id)}
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40"
               >
-                Open Full Task Board
+                {a.label}
               </button>
-            </div>
-
-            <div className="space-y-2.5">
-              {tasks.slice(0, 3).map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => toggleTaskCompleted(task.id)}
-                  className="p-3 rounded-xl bg-[#16201b] border border-[#223328] hover:border-[#2dd4bf] transition-all flex items-center justify-between cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
-                        task.completed
-                          ? 'bg-[#10b981] border-[#10b981] text-black'
-                          : 'border-[#384e40]'
-                      }`}
-                    >
-                      {task.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </div>
-                    <div>
-                      <p className={`text-xs font-bold ${task.completed ? 'line-through text-[#6b7280]' : 'text-white'}`}>
-                        {task.title}
-                      </p>
-                      <p className="text-[11px] text-[#9ca3af]">Due: {task.dueDate}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`w-6 h-6 rounded-full ${task.assignee?.color || 'bg-[#2dd4bf]'} text-white text-[10px] font-bold flex items-center justify-center`}
-                      title={task.assignee?.name || 'Unassigned'}
-                    >
-                      {task.assignee?.avatar || '?'}
-                    </div>
-                    <span className="text-[10px] text-[#9ca3af] hidden sm:inline">{task.assignee?.name || 'Unassigned'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* ── TAB 2: TEAM MEMBERS SECTION ───────────────────────────────────── */}
-      {activeTab === 'team' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between bg-[#121915] border border-[#1e2d24] p-5 rounded-2xl">
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Project Roster & Roles</h2>
-              <p className="text-xs text-[#9ca3af] mt-0.5">
-                Team members assigned to collaborate on sprints, code reviews, and deliverable sign-offs
-              </p>
-            </div>
-
-            <button
-              onClick={() => setIsAddingMember(true)}
-              className="px-3.5 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#26b8a5] text-[#052e24] text-xs font-black transition-all shadow-md shadow-[#2dd4bf]/20 flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span>Add Member</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {project.team.map((member) => (
-              <div
-                key={member.id}
-                className="bg-[#121915] border border-[#1e2d24] rounded-2xl p-5 flex items-start gap-3 hover:border-[#2dd4bf]/40 transition-colors"
-              >
-                <div
-                  className={`w-11 h-11 rounded-2xl ${member.color} text-white font-black text-sm flex items-center justify-center shrink-0 shadow-md`}
-                >
-                  {member.avatar}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-bold text-white truncate">{member.name}</h3>
-                  <p className="text-xs text-[#2dd4bf] font-medium">{member.role}</p>
-                  <p className="text-[11px] text-[#6b7280] truncate mt-0.5">{member.email}</p>
-
-                  <div className="mt-3 pt-2 border-t border-[#18241d] flex items-center justify-between text-[11px] text-[#9ca3af]">
-                    <span>Assigned Tasks:</span>
-                    <strong className="text-white font-mono">
-                      {tasks.filter((t) => t.assignee?.id === member.id).length}
-                    </strong>
-                  </div>
-                </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { label: 'Tasks done', value: `${doneCount}/${tasks.length}`, tone: 'text-[#2dd4bf]' },
+              { label: 'Milestones', value: String(milestones.length), tone: 'text-[#a855f7]' },
+              {
+                label: 'Docs',
+                value: String(commercialDocs.length + hubDocs.length),
+                tone: 'text-[#38bdf8]',
+              },
+              {
+                label: 'Budget used',
+                value: project.budget ? `${Math.round((project.spent / project.budget) * 100)}%` : '—',
+                tone: 'text-[#fbbf24]',
+              },
+            ].map((c) => (
+              <div key={c.label} className="rounded-2xl bg-[#121915] border border-[#1e2d24] p-4">
+                <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-bold">{c.label}</p>
+                <p className={`text-2xl font-black mt-1 ${c.tone}`}>{c.value}</p>
               </div>
             ))}
           </div>
-
-          {/* Add Team Member Modal */}
-          {isAddingMember && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className="bg-[#121915] border border-[#223328] w-full max-w-md rounded-2xl shadow-2xl p-6 relative">
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="rounded-2xl bg-[#121915] border border-[#1e2d24] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-white">Upcoming tasks</h3>
                 <button
-                  onClick={() => setIsAddingMember(false)}
-                  className="absolute top-5 right-5 text-[#9ca3af] hover:text-white p-1 rounded-lg"
+                  type="button"
+                  onClick={() => setActiveTab('tasks')}
+                  className="text-[11px] text-[#2dd4bf] font-semibold"
                 >
-                  <X className="w-5 h-5" />
+                  Board →
                 </button>
-
-                <h3 className="text-base font-bold text-white mb-3">Add Team Member to Project</h3>
-                <p className="text-xs text-[#9ca3af] mb-4">Select an Omnysync staff member to assign to this sprint</p>
-
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {TEAM_MEMBERS.map((m) => {
-                    const isAlready = project.team.some((t) => t.id === m.id);
-                    return (
-                      <div
-                        key={m.id}
-                        onClick={() => !isAlready && handleAddMemberToProject(m)}
-                        className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                          isAlready
-                            ? 'bg-[#18261e] border-[#203227] opacity-50 cursor-not-allowed'
-                            : 'bg-[#141e18] border-[#223328] hover:border-[#2dd4bf] cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full ${m.color} text-white font-bold flex items-center justify-center text-xs`}>
-                            {m.avatar}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-white">{m.name}</p>
-                            <p className="text-[11px] text-[#9ca3af]">{m.role}</p>
-                          </div>
-                        </div>
-                        {isAlready ? (
-                          <span className="text-[10px] text-[#9ca3af] font-semibold">Assigned</span>
-                        ) : (
-                          <Plus className="w-4 h-4 text-[#2dd4bf]" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
+              {tasks.filter((t) => !t.completed && t.status !== 'done').slice(0, 5).length === 0 ? (
+                <p className="text-xs text-[#6b7280]">All caught up.</p>
+              ) : (
+                <div className="space-y-2">
+                  {tasks
+                    .filter((t) => !t.completed && t.status !== 'done')
+                    .slice(0, 5)
+                    .map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => openEditTask(t)}
+                        className="w-full text-left p-2.5 rounded-xl bg-[#0b1210] border border-[#1e2a22] hover:border-[#2dd4bf]/30"
+                      >
+                        <p className="text-xs font-bold text-white">{t.title}</p>
+                        <p className="text-[10px] text-[#6b7280] mt-0.5">
+                          {t.status || 'todo'} · due {t.dueDate}
+                        </p>
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
-          )}
+            <div className="rounded-2xl bg-[#121915] border border-[#1e2d24] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-white">Milestone pulse</h3>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('milestones')}
+                  className="text-[11px] text-[#2dd4bf] font-semibold"
+                >
+                  Manage →
+                </button>
+              </div>
+              {milestones.length === 0 ? (
+                <p className="text-xs text-[#6b7280]">No milestones — add phase gates in Plan.</p>
+              ) : (
+                <div className="space-y-2">
+                  {milestones.slice(0, 4).map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-2.5 rounded-xl bg-[#0b1210] border border-[#1e2a22] flex justify-between gap-2"
+                    >
+                      <p className="text-xs font-bold text-white">{m.title}</p>
+                      <span className="text-[10px] text-[#9ca3af] capitalize shrink-0">
+                        {m.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── TAB 3: TASKS & TO-DO LIST WITH PERSON ASSIGNMENT ────────────────── */}
+      {activeTab === 'milestones' && (
+        <ProjectMilestonesPanel
+          milestones={milestones}
+          onChange={(next: ProjectMilestone[]) => persistProject({ ...project, milestones: next })}
+        />
+      )}
+
+      {activeTab === 'calendar' && (
+        <div className="rounded-2xl border border-[#1e2d24] overflow-hidden bg-[#121915]">
+          <ProjectCalendarView
+            projectId={project.id}
+            externalEvents={calendarEvents}
+            onEventClick={(ev) => {
+              if (ev.id.startsWith('task-')) {
+                const id = ev.id.replace('task-', '');
+                const t = tasks.find((x) => x.id === id);
+                if (t) openEditTask(t);
+              } else if (ev.id.startsWith('ms-')) {
+                setActiveTab('milestones');
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {activeTab === 'team' && (
+        <ProjectTeamPanel
+          team={project.team}
+          taskCounts={taskCounts}
+          onChange={(team: TeamMember[]) =>
+            persistProject({ ...project, team, avatarsCount: team.length })
+          }
+        />
+      )}
+
       {activeTab === 'tasks' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121915] border border-[#1e2d24] p-5 rounded-2xl">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#121915] border border-[#1e2d24] p-5">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Project Tasks</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Tasks</h2>
               <p className="text-xs text-[#9ca3af] mt-0.5">
-                ClickUp-style board — drag across columns, open a card for checklist & comments
+                Enterprise board — create, drag statuses, open cards for checklist & comments
               </p>
             </div>
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex bg-[#0b1210] border border-[#1e2a22] rounded-xl p-0.5">
                 <button
                   type="button"
@@ -831,568 +676,275 @@ export default function ProjectDetailWorkspace({
                   <LayoutList className="w-3.5 h-3.5" /> List
                 </button>
               </div>
-            </div>
-
-            <button
-              onClick={() => setIsAddingTask(true)}
-              className="px-4 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#26b8a5] text-[#052e24] text-xs font-black transition-all shadow-md shadow-[#2dd4bf]/20 flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span>Assign New Task</span>
-            </button>
-          </div>
-
-          {/* Filters Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#9ca3af] font-semibold">Filter by Assignee:</span>
-              <select
-                value={taskFilterAssignee}
-                onChange={(e) => setTaskFilterAssignee(e.target.value)}
-                className="bg-[#141e18] border border-[#203026] focus:border-[#2dd4bf] rounded-xl px-3 py-1.5 text-xs text-white outline-none"
+              <button
+                type="button"
+                onClick={openCreateTask}
+                className="px-4 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-black flex items-center gap-1.5"
               >
-                <option value="all">All Assignees</option>
-                {project.team.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.role})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-1.5 bg-[#141e18] p-1 rounded-xl border border-[#203026]">
-              {(['all', 'todo', 'in_progress', 'review', 'done', 'pending', 'completed'] as const).map((st) => (
-                <button
-                  key={st}
-                  onClick={() => setTaskFilterStatus(st)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all ${
-                    taskFilterStatus === st
-                      ? 'bg-[#2dd4bf] text-[#052e24] font-bold'
-                      : 'text-[#9ca3af] hover:text-white'
-                  }`}
-                >
-                  {st}
-                </button>
-              ))}
+                <Plus className="w-3.5 h-3.5 stroke-[3]" /> New task
+              </button>
             </div>
           </div>
 
-          {taskViewMode === 'kanban' && (
-            <ProjectKanbanBoard
-              tasks={filteredTasks}
-              onStatusChange={(id, status) => setTaskStatus(id, status)}
-              onOpenTask={(t) => {
-                setEditingTask(t);
-                setIsTaskDrawerOpen(true);
-              }}
-            />
-          )}
-
-          {taskViewMode === 'list' && (
-          <>
-          {/* Tasks List */}
-          <div className="bg-[#121915] border border-[#1e2d24] rounded-2xl overflow-hidden divide-y divide-[#18241d]">
-            {filteredTasks.length === 0 ? (
-              <div className="p-8 text-center text-[#6b7280] text-xs">
-                No tasks match the selected filter.
-              </div>
-            ) : (
-              filteredTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="p-4 flex flex-wrap items-center justify-between gap-3 hover:bg-[#16211a] transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <button
-                      onClick={() => toggleTaskCompleted(task.id)}
-                      className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                        task.completed
-                          ? 'bg-[#10b981] border-[#10b981] text-black'
-                          : 'border-[#384e40] hover:border-white'
-                      }`}
-                    >
-                      {task.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </button>
-                    <div className="min-w-0">
-                      <p
-                        className={`text-xs font-bold leading-tight ${
-                          task.completed ? 'line-through text-[#6b7280]' : 'text-white'
-                        }`}
-                      >
-                        {task.title}
-                      </p>
-                      <div className="flex items-center gap-3 text-[11px] text-[#9ca3af] mt-1">
-                        <span>Due: {task.dueDate}</span>
-                        <span>&bull;</span>
-                        <span
-                          className={`font-semibold ${
-                            task.priority === 'High'
-                              ? 'text-[#f87171]'
-                              : task.priority === 'Medium'
-                              ? 'text-[#fbbf24]'
-                              : 'text-[#34d399]'
-                          }`}
-                        >
-                          {task.priority} Priority
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <select
-                    value={task.status || (task.completed ? 'done' : 'todo')}
-                    onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)}
-                    className="bg-[#17221c] border border-[#203227] text-[10px] font-bold text-white rounded-lg px-2 py-1.5"
-                  >
-                    <option value="todo">To do</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="review">Review</option>
-                    <option value="done">Done</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => deleteTask(task.id)}
-                    className="p-1.5 rounded-lg text-[#6b7280] hover:text-[#f87171] hover:bg-[#2a1212]"
-                    title="Delete task"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Assignee Badge Pill */}
-                  <div className="flex items-center gap-2 bg-[#17221c] border border-[#203227] px-3 py-1.5 rounded-xl">
-                    <div
-                      className={`w-6 h-6 rounded-full ${task.assignee?.color || 'bg-[#2dd4bf]'} text-white font-bold text-[10px] flex items-center justify-center`}
-                    >
-                      {task.assignee?.avatar || '?'}
-                    </div>
-                    <div className="text-left">
-                      <span className="text-[11px] font-bold text-white block leading-tight">
-                        {task.assignee?.name || 'Unassigned'}
-                      </span>
-                      <span className="text-[9px] text-[#9ca3af] block">{task.assignee?.role || ''}</span>
-                    </div>
-                  </div>
-                </div>
-              ))
+          <div className="flex flex-wrap gap-2 items-center rounded-2xl bg-[#0b1210] border border-[#1e2a22] p-3">
+            <div className="relative flex-1 min-w-[160px]">
+              <Search className="w-3.5 h-3.5 text-[#6b7280] absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                value={taskSearch}
+                onChange={(e) => setTaskSearch(e.target.value)}
+                placeholder="Search tasks…"
+                className="w-full bg-[#141d18] border border-[#1e2a22] rounded-xl pl-8 pr-3 py-2 text-xs text-white"
+              />
+            </div>
+            <select
+              value={taskFilterStatus}
+              onChange={(e) => setTaskFilterStatus(e.target.value as any)}
+              className="bg-[#141d18] border border-[#1e2a22] rounded-xl px-2 py-2 text-[11px] text-white"
+            >
+              <option value="all">All statuses</option>
+              <option value="todo">To do</option>
+              <option value="in_progress">In progress</option>
+              <option value="review">Review</option>
+              <option value="done">Done</option>
+            </select>
+            <select
+              value={taskFilterPriority}
+              onChange={(e) => setTaskFilterPriority(e.target.value as any)}
+              className="bg-[#141d18] border border-[#1e2a22] rounded-xl px-2 py-2 text-[11px] text-white"
+            >
+              <option value="all">All priorities</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <select
+              value={taskFilterAssignee}
+              onChange={(e) => setTaskFilterAssignee(e.target.value)}
+              className="bg-[#141d18] border border-[#1e2a22] rounded-xl px-2 py-2 text-[11px] text-white"
+            >
+              <option value="all">All assignees</option>
+              {project.team.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={clearTaskFilters}
+                className="px-2 py-2 text-[11px] text-[#9ca3af] flex items-center gap-1 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" /> Clear
+              </button>
             )}
           </div>
 
-          </>
+          {selectedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[#18261e] border border-[#2dd4bf]/30 px-3 py-2">
+              <span className="text-[11px] text-[#2dd4bf] font-bold">{selectedIds.length} selected</span>
+              <button type="button" onClick={() => bulkSetStatus('in_progress')} className="text-[10px] font-bold text-white px-2 py-1 rounded-lg bg-[#141d18]">
+                → In progress
+              </button>
+              <button type="button" onClick={() => bulkSetStatus('done')} className="text-[10px] font-bold text-white px-2 py-1 rounded-lg bg-[#141d18]">
+                → Done
+              </button>
+              <button type="button" onClick={bulkDelete} className="text-[10px] font-bold text-[#f87171] px-2 py-1 rounded-lg bg-[#2a1212] flex items-center gap-1">
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+              <button type="button" onClick={() => setSelectedIds([])} className="ml-auto text-[10px] text-[#9ca3af]">
+                Clear selection
+              </button>
+            </div>
           )}
 
-          <ProjectTaskDrawer
-            task={editingTask}
-            isOpen={isTaskDrawerOpen}
-            onClose={() => {
-              setIsTaskDrawerOpen(false);
-              setEditingTask(null);
-            }}
-            onSave={(t) => updateTask(t)}
-            onDelete={(id) => deleteTask(id)}
-          />
-
-          {/* Add Task Modal */}
-          {isAddingTask && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className="bg-[#121915] border border-[#223328] w-full max-w-md rounded-2xl shadow-2xl p-6 relative">
-                <button
-                  onClick={() => setIsAddingTask(false)}
-                  className="absolute top-5 right-5 text-[#9ca3af] hover:text-white p-1 rounded-lg"
+          {filteredTasks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#1e2a22] p-10 text-center">
+              <p className="text-sm font-bold text-white">
+                {tasks.length === 0 ? 'No tasks on this project yet' : 'No tasks match filters'}
+              </p>
+              <p className="text-[11px] text-[#9ca3af] mt-1">
+                {tasks.length === 0
+                  ? 'Create the first deliverable to kick off the board.'
+                  : 'Try clearing filters.'}
+              </p>
+              <button
+                type="button"
+                onClick={tasks.length === 0 ? openCreateTask : clearTaskFilters}
+                className="mt-3 px-3 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold"
+              >
+                {tasks.length === 0 ? 'Create task' : 'Clear filters'}
+              </button>
+            </div>
+          ) : taskViewMode === 'kanban' ? (
+            <ProjectKanbanBoard
+              tasks={filteredTasks}
+              onStatusChange={setTaskStatus}
+              onOpenTask={openEditTask}
+            />
+          ) : (
+            <div className="rounded-2xl bg-[#121915] border border-[#1e2d24] overflow-hidden divide-y divide-[#18241d]">
+              {filteredTasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="p-3 flex flex-wrap items-center gap-3 hover:bg-[#16211a]"
                 >
-                  <X className="w-5 h-5" />
-                </button>
-
-                <h3 className="text-base font-bold text-white mb-1">Assign New Task</h3>
-                <p className="text-xs text-[#9ca3af] mb-4">
-                  Create a task and assign it to a team member in this project
-                </p>
-
-                <form onSubmit={handleAddTask} className="space-y-4 text-xs">
-                  <div>
-                    <label className="block text-[#d1d5db] font-semibold mb-1">Task Title</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Implement OAuth2 Refresh Token Rotation"
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      className="w-full bg-[#16201b] border border-[#223328] focus:border-[#2dd4bf] rounded-xl px-3 py-2 text-white outline-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[#d1d5db] font-semibold mb-1">Assign To</label>
-                      <select
-                        value={newTaskAssigneeId}
-                        onChange={(e) => setNewTaskAssigneeId(e.target.value)}
-                        className="w-full bg-[#16201b] border border-[#223328] focus:border-[#2dd4bf] rounded-xl px-3 py-2 text-white outline-none"
-                      >
-                        {project.team.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.role})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[#d1d5db] font-semibold mb-1">Priority</label>
-                      <select
-                        value={newTaskPriority}
-                        onChange={(e) => setNewTaskPriority(e.target.value as any)}
-                        className="w-full bg-[#16201b] border border-[#223328] focus:border-[#2dd4bf] rounded-xl px-3 py-2 text-white outline-none"
-                      >
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[#d1d5db] font-semibold mb-1">Due Date</label>
-                    <input
-                      type="date"
-                      value={newTaskDueDate}
-                      onChange={(e) => setNewTaskDueDate(e.target.value)}
-                      className="w-full bg-[#16201b] border border-[#223328] focus:border-[#2dd4bf] rounded-xl px-3 py-2 text-white font-mono outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1b2620]">
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingTask(false)}
-                      className="px-4 py-2 rounded-xl text-[#9ca3af] hover:text-white"
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(task.id)}
+                    onChange={(e) => {
+                      setSelectedIds((prev) =>
+                        e.target.checked ? [...prev, task.id] : prev.filter((x) => x !== task.id)
+                      );
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTaskStatus(
+                        task.id,
+                        task.status === 'done' || task.completed ? 'todo' : 'done'
+                      )
+                    }
+                    className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                      task.completed || task.status === 'done'
+                        ? 'bg-[#10b981] border-[#10b981] text-black'
+                        : 'border-[#384e40]'
+                    }`}
+                  >
+                    {(task.completed || task.status === 'done') && (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditTask(task)}
+                    className="flex-1 text-left min-w-0"
+                  >
+                    <p
+                      className={`text-sm font-bold ${
+                        task.completed || task.status === 'done'
+                          ? 'line-through text-[#6b7280]'
+                          : 'text-white'
+                      }`}
                     >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#26b8a5] text-[#052e24] font-black shadow-md shadow-[#2dd4bf]/20"
-                    >
-                      Assign Task
-                    </button>
-                  </div>
-                </form>
-              </div>
+                      {task.title}
+                    </p>
+                    <p className="text-[10px] text-[#6b7280]">
+                      {task.status || 'todo'} · {task.priority} · due {task.dueDate}
+                    </p>
+                  </button>
+                  <span className="text-[10px] text-[#9ca3af]">{task.assignee?.name || 'Unassigned'}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* ── TAB 4: TIMELINE / GANTT VIEW ──────────────────────────────────── */}
-      {activeTab === 'timeline' && (
-        <div className="bg-[#121915] border border-[#1e2d24] rounded-2xl p-6 space-y-6">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Project Milestone Timeline</h2>
-            <p className="text-xs text-[#9ca3af] mt-0.5">
-              Sprint deliverables mapped across time with completion checkpoints
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            {[
-              { phase: 'Sprint 1: Scope & Architecture', status: 'Completed', range: 'Week 1 - 2', progress: 100, color: 'bg-[#10b981]' },
-              { phase: 'Sprint 2: Core Engineering & Integrations', status: 'In Progress', range: 'Week 3 - 5', progress: 65, color: 'bg-[#2dd4bf]' },
-              { phase: 'Sprint 3: UI/UX Handoff & Security Audit', status: 'Upcoming', range: 'Week 6 - 7', progress: 20, color: 'bg-[#818cf8]' },
-              { phase: 'Sprint 4: Final Sign-off & Production Deployment', status: 'Scheduled', range: 'Week 8', progress: 0, color: 'bg-[#fbbf24]' },
-            ].map((sprint, idx) => (
-              <div key={idx} className="p-4 rounded-xl bg-[#16201b] border border-[#223328] space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{sprint.phase}</span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#18261e] text-[#2dd4bf]">
-                      {sprint.range}
-                    </span>
-                  </div>
-                  <span className="font-mono text-[#9ca3af] font-semibold">{sprint.progress}%</span>
-                </div>
-
-                <div className="w-full bg-[#101713] h-2 rounded-full overflow-hidden">
-                  <div className={`${sprint.color} h-full rounded-full transition-all duration-500`} style={{ width: `${sprint.progress}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {activeTab === 'chat' && (
+        <ProjectChatPanel projectId={project.id} projectTitle={project.title} />
       )}
 
-      {/* ── TAB 5: SEPARATE PROPER CALENDAR VIEW ───────────────────────────── */}
-      {activeTab === 'calendar' && (
-        <ProjectCalendarView projectId={project.id} />
+      {activeTab === 'whiteboard' && (
+        <ProjectWhiteboardPanel projectId={project.id} projectTitle={project.title} />
       )}
 
-      {/* ── TAB 6: PROJECT DOCUMENTS HUB ──────────────────────────────────── */}
       {activeTab === 'docs' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121915] border border-[#1e2d24] p-5 rounded-2xl">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#121915] border border-[#1e2d24] p-5">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Project Documents & Legal SOWs</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Project documents</h2>
               <p className="text-xs text-[#9ca3af] mt-0.5">
-                All Statement of Works, Quotations, Invoices, and Specifications linked to this project
+                Create letterhead SOW, quotes, and invoices linked to this engagement
               </p>
             </div>
-
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => createProjectCommercialDoc('sow')}
-                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold flex items-center gap-1.5 hover:border-[#2dd4bf]/40"
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-xs font-bold text-white flex items-center gap-1.5"
               >
                 <ScrollText className="w-3.5 h-3.5 text-[#a855f7]" /> New SOW
               </button>
               <button
                 type="button"
                 onClick={() => createProjectCommercialDoc('quotation')}
-                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold flex items-center gap-1.5 hover:border-[#2dd4bf]/40"
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-xs font-bold text-white flex items-center gap-1.5"
               >
                 <FilePlus2 className="w-3.5 h-3.5 text-[#38bdf8]" /> New quote
               </button>
               <button
                 type="button"
                 onClick={() => createProjectCommercialDoc('invoice')}
-                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold flex items-center gap-1.5 hover:border-[#2dd4bf]/40"
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-xs font-bold text-white flex items-center gap-1.5"
               >
                 <Receipt className="w-3.5 h-3.5 text-[#fbbf24]" /> New invoice
               </button>
-            <button
-              onClick={() => setIsLinkingDoc(true)}
-              className="px-4 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#26b8a5] text-[#052e24] text-xs font-black transition-all shadow-md shadow-[#2dd4bf]/20 flex items-center gap-1.5"
-            >
-              <LinkIcon className="w-3.5 h-3.5 stroke-[3]" />
-              <span>Link Existing Document</span>
-            </button>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {linkedCommercialDocs.map((doc) => (
-              <div
-                key={doc.id}
-                className="bg-[#121915] border border-[#1e2d24] hover:border-[#2dd4bf] rounded-2xl p-5 flex flex-col justify-between transition-colors"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-[#18261e] text-[#2dd4bf] border border-[#263c2f]">
-                      {doc.docType}
-                    </span>
-                    <span className="text-xs font-bold text-[#10b981] capitalize">{doc.status}</span>
-                  </div>
-                  <h3 className="text-sm font-bold text-white">{doc.title}</h3>
-                  <p className="text-xs text-[#9ca3af] mt-0.5">{doc.clientName} &bull; {doc.docNumber}</p>
-                </div>
-
-                <div className="pt-4 border-t border-[#18241d] mt-4 flex items-center justify-between">
-                  <span className="text-base font-mono font-bold text-white">${doc.totalAmount.toLocaleString()}</span>
-                  <span className="text-[11px] text-[#2dd4bf] font-semibold">Verified Electronic SOW</span>
-                </div>
-              </div>
-            ))}
-
-            {linkedDriveFiles.map((file) => (
-              <div
-                key={file.id}
-                className="bg-[#121915] border border-[#1e2d24] hover:border-[#38bdf8] rounded-2xl p-5 flex flex-col justify-between transition-colors"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-[#15232d] text-[#38bdf8] border border-[#1f3747]">
-                      {file.type}
-                    </span>
-                    <span className="text-xs font-bold text-[#38bdf8]">{file.size}</span>
-                  </div>
-                  <h3 className="text-sm font-bold text-white">{file.name}</h3>
-                  <p className="text-xs text-[#6b7280] font-mono mt-0.5">{file.folderPath}</p>
-                </div>
-
-                <div className="pt-4 border-t border-[#18241d] mt-4 flex items-center justify-between">
-                  <span className="text-[11px] text-[#9ca3af]">Synced to Google Drive</span>
-                  <span className="text-xs text-[#38bdf8] font-semibold">Cloud Ready</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Link Document Modal */}
-          {isLinkingDoc && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className="bg-[#121915] border border-[#223328] w-full max-w-md rounded-2xl shadow-2xl p-6 relative">
+          {commercialDocs.length + hubDocs.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#1e2a22] p-10 text-center">
+              <p className="text-sm font-bold text-white">No documents linked yet</p>
+              <p className="text-[11px] text-[#9ca3af] mt-1">
+                Generate an SOW or quote to kick off commercial paperwork.
+              </p>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {commercialDocs.map((d) => (
                 <button
-                  onClick={() => setIsLinkingDoc(false)}
-                  className="absolute top-5 right-5 text-[#9ca3af] hover:text-white p-1 rounded-lg"
+                  key={d.id}
+                  type="button"
+                  onClick={() =>
+                    navigate({ tab: 'finance', financeSub: d.docType === 'invoice' ? 'invoices' : 'quotes' })
+                  }
+                  className="text-left rounded-2xl bg-[#121915] border border-[#1e2d24] p-4 hover:border-[#2dd4bf]/30"
                 >
-                  <X className="w-5 h-5" />
+                  <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-bold">
+                    {d.docType}
+                  </p>
+                  <p className="text-sm font-bold text-white mt-1">{d.title}</p>
+                  <p className="text-[11px] text-[#9ca3af] mt-1">
+                    {d.docNumber} · {formatPKR(d.totalAmount, true)} · {d.status}
+                  </p>
                 </button>
-
-                <h3 className="text-base font-bold text-white mb-1">Link Document to Project</h3>
-                <p className="text-xs text-[#9ca3af] mb-4">
-                  Attach an existing SOW, contract, or quotation to {project.title}
-                </p>
-
-                <div className="space-y-4 text-xs">
-                  <div>
-                    <label className="block text-[#d1d5db] font-semibold mb-1">Select Document</label>
-                    <select
-                      value={selectedDocIdToLink}
-                      onChange={(e) => setSelectedDocIdToLink(e.target.value)}
-                      className="w-full bg-[#16201b] border border-[#223328] focus:border-[#2dd4bf] rounded-xl px-3 py-2 text-white outline-none"
-                    >
-                      <option value="">Choose a document...</option>
-                      {COMMERCIAL_DOCUMENTS.map((doc) => (
-                        <option key={doc.id} value={doc.id}>
-                          {doc.docNumber} - {doc.title} (${doc.totalAmount.toLocaleString()})
-                        </option>
-                      ))}
-                      {GOOGLE_DRIVE_FILES.map((file) => (
-                        <option key={file.id} value={file.id}>
-                          Drive: {file.name} ({file.size})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1b2620]">
-                    <button
-                      type="button"
-                      onClick={() => setIsLinkingDoc(false)}
-                      className="px-4 py-2 rounded-xl text-[#9ca3af] hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLinkDoc}
-                      className="px-5 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#26b8a5] text-[#052e24] font-black shadow-md shadow-[#2dd4bf]/20"
-                    >
-                      Link Document
-                    </button>
-                  </div>
-                </div>
-              </div>
+              ))}
+              {hubDocs.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveHubDocument(d);
+                    navigate({ tab: 'documents', focus: { kind: 'document', id: d.id } });
+                  }}
+                  className="text-left rounded-2xl bg-[#121915] border border-[#1e2d24] p-4 hover:border-[#2dd4bf]/30"
+                >
+                  <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-bold">
+                    Hub · {d.type}
+                  </p>
+                  <p className="text-sm font-bold text-white mt-1">{d.docNumber}</p>
+                  <p className="text-[11px] text-[#9ca3af] mt-1">
+                    {formatPKR(d.grandTotal, true)} · {d.status}
+                  </p>
+                </button>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* ── TAB: PROJECT CHAT ─────────────────────────────────────────────── */}
-        {activeTab === 'chat' && (
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Project Chat</h2>
-              <p className="text-[11px] text-[#9ca3af] mt-0.5">
-                ClickUp-style ops thread scoped to this project (mock, persists locally).
-              </p>
-            </div>
-            <ProjectChatPanel projectId={project.id} projectTitle={project.title} />
-          </div>
-        )}
-
-        {/* ── TAB 7: DEDICATED PROJECT WHITEBOARD ────────────────────────────── */}
-      {activeTab === 'whiteboard' && (
-        <div className="bg-[#121915] border border-[#1e2d24] rounded-2xl p-5 space-y-4">
-          {/* Whiteboard Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#1b2620]">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                {project.title} &bull; Collaborative Visual Whiteboard
-              </h3>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#18261e] text-[#2dd4bf]">
-                Canvas Scoped to Project
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Color choices */}
-              <div className="flex items-center gap-1.5 bg-[#16201b] border border-[#223328] p-1 rounded-xl">
-                {['#2dd4bf', '#818cf8', '#fbbf24', '#f43f5e', '#ffffff'].map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setDrawColor(c)}
-                    className={`w-5 h-5 rounded-full border transition-transform ${
-                      drawColor === c ? 'scale-125 border-white' : 'border-transparent opacity-60'
-                    }`}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-
-              {/* Stroke Size */}
-              <select
-                value={drawSize}
-                onChange={(e) => setDrawSize(parseInt(e.target.value))}
-                className="bg-[#16201b] border border-[#223328] rounded-xl px-2 py-1 text-xs text-white outline-none"
-              >
-                <option value={2}>Fine (2px)</option>
-                <option value={4}>Medium (4px)</option>
-                <option value={8}>Bold (8px)</option>
-              </select>
-
-              <button
-                onClick={clearWhiteboard}
-                className="px-3 py-1.5 rounded-xl bg-[#16201b] border border-[#223328] hover:border-[#ef4444] text-xs text-[#ef4444] font-bold flex items-center gap-1"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Clear Canvas</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Sticky Notes Quick Input */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={newStickyText}
-              onChange={(e) => setNewStickyText(e.target.value)}
-              placeholder="Add a quick sticky note / idea..."
-              className="bg-[#16201b] border border-[#223328] focus:border-[#2dd4bf] rounded-xl px-3 py-1.5 text-xs text-white flex-1 outline-none"
-              onKeyDown={(e) => e.key === 'Enter' && addStickyNote()}
-            />
-            <button
-              onClick={addStickyNote}
-              className="px-4 py-1.5 rounded-xl bg-[#2dd4bf] text-[#052e24] font-bold text-xs shadow-md shadow-[#2dd4bf]/20"
-            >
-              + Add Sticky Note
-            </button>
-          </div>
-
-          {/* Canvas Viewport */}
-          <div className="relative border border-[#1e2d24] rounded-xl overflow-hidden shadow-inner bg-[#101613]">
-            <canvas
-              ref={canvasRef}
-              width={960}
-              height={500}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              className="w-full h-[500px] cursor-crosshair"
-            />
-
-            {/* Render Sticky Notes Overlay */}
-            {stickyNotes.map((note) => (
-              <div
-                key={note.id}
-                style={{ top: `${note.y}px`, left: `${note.x}px` }}
-                className={`absolute ${note.color} text-black p-3 rounded-xl shadow-xl w-44 font-sans text-xs select-none border border-black/10`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-[9px] uppercase font-bold text-black/60">Idea Note</span>
-                  <button
-                    onClick={() => removeStickyNote(note.id)}
-                    className="text-black/50 hover:text-black"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <p className="font-semibold text-gray-900 leading-snug">{note.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      </GooeyFolderTabs>
+      <ProjectTaskDrawer
+        task={editingTask}
+        isOpen={isTaskDrawerOpen}
+        mode={drawerMode}
+        onClose={() => {
+          setIsTaskDrawerOpen(false);
+          setEditingTask(null);
+        }}
+        onSave={handleSaveTask}
+        onDelete={(id) => deleteTask(id)}
+      />
     </div>
   );
 }

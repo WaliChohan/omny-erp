@@ -29,6 +29,7 @@ interface LeadDetailModalProps {
   onCreateDoc?: (lead: LeadCard) => void;
   queue?: LeadCard[];
   onOpenLead?: (lead: LeadCard) => void;
+  onDelete?: (lead: LeadCard) => void;
 }
 
 export default function LeadDetailModal({
@@ -42,6 +43,7 @@ export default function LeadDetailModal({
   onCreateDoc,
   queue = [],
   onOpenLead,
+  onDelete,
 }: LeadDetailModalProps) {
   if (!lead) return null;
 
@@ -134,7 +136,16 @@ export default function LeadDetailModal({
                 To client
               </button>
             )}
-            {onConvertToDeal && (
+            {onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(lead)}
+            className="px-3 py-2 rounded-xl border border-[#7f1d1d]/50 text-[#f87171] text-xs font-bold"
+          >
+            Delete lead
+          </button>
+        )}
+        {onConvertToDeal && (
               <button
                 type="button"
                 onClick={() => {

@@ -19,6 +19,17 @@ export interface ProjectTask {
   assignee: TeamMember;
 }
 
+export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'archived';
+
+export interface ProjectMilestone {
+  id: string;
+  title: string;
+  description?: string;
+  dueDate: string;
+  status: 'upcoming' | 'in_progress' | 'done' | 'missed';
+  linkedTaskIds?: string[];
+}
+
 export interface ProjectCardItem {
   id: string;
   title: string;
@@ -37,6 +48,10 @@ export interface ProjectCardItem {
   tasks?: ProjectTask[];
   linkedDocIds?: string[];
   clientId?: string;
+  status?: ProjectStatus;
+  archived?: boolean;
+  milestones?: ProjectMilestone[];
+  updatedAt?: string;
 }
 
 export interface TodayTaskItem {
@@ -145,6 +160,31 @@ export const OMNYSYNC_PROJECTS: ProjectCardItem[] = [
     bgGradient: 'bg-gradient-to-br from-[#6d4cb8] to-[#5939a8]',
     avatarsCount: 7,
     team: [TEAM_MEMBERS[0], TEAM_MEMBERS[1], TEAM_MEMBERS[4]],
+    status: 'active',
+    archived: false,
+    updatedAt: '2026-09-28',
+    milestones: [
+      {
+        id: 'ms-p1-1',
+        title: 'Discovery & scope lock',
+        description: 'Signed SOW and technical discovery complete',
+        dueDate: '2026-09-20',
+        status: 'done',
+      },
+      {
+        id: 'ms-p1-2',
+        title: 'MVP booking flows',
+        description: 'Client booking + dispatch board beta',
+        dueDate: '2026-10-15',
+        status: 'in_progress',
+      },
+      {
+        id: 'ms-p1-3',
+        title: 'Launch & SEO handoff',
+        dueDate: '2026-11-01',
+        status: 'upcoming',
+      },
+    ],
     linkedDocIds: ['gdf-1', 'gdf-4'],
     tasks: [
       {
@@ -185,6 +225,12 @@ export const OMNYSYNC_PROJECTS: ProjectCardItem[] = [
     category: 'Mobile App · HVAC',
     client: 'ComfortZone HVAC',
     clientId: 'cli-2',
+    status: 'active',
+    archived: false,
+    milestones: [
+      { id: 'ms-p2-1', title: 'Sprint 0 kickoff', dueDate: '2026-09-30', status: 'in_progress' },
+      { id: 'ms-p2-2', title: 'Field app beta', dueDate: '2026-11-15', status: 'upcoming' },
+    ],
     description: 'Next-gen biometric mobile banking application with instant peer-to-peer settlements and card controls.',
     deadline: '2025-06-30',
     budget: 45000,

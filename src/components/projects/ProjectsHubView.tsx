@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Calendar,
   LayoutGrid,
+  Archive,
 } from 'lucide-react';
 import {
   TODAY_TASKS,
@@ -38,6 +39,9 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
   const {
     projects: agencyProjects,
     updateProject,
+    addProject,
+    archiveProject,
+    deleteProject,
     createDocument,
     consumeFocus,
     navigate,
@@ -49,6 +53,17 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
     setProjects(agencyProjects);
   }, [agencyProjects]);
 
+  const filteredProjects = projects.filter((p) => {
+    if (!showArchived && (p.archived || p.status === 'archived')) return false;
+    if (statusFilter !== 'all' && (p.status || 'active') !== statusFilter) return false;
+    if (hubSearch.trim()) {
+      const q = hubSearch.toLowerCase();
+      const blob = `${p.title} ${p.client || ''} ${p.category} ${p.description || ''}`.toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  });
+
   useEffect(() => {
     const id = consumeFocus('project');
     if (!id) return;
@@ -57,6 +72,9 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
   }, [consumeFocus, agencyProjects, projects]);
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [activeMainView, setActiveMainView] = useState<'hub' | 'calendar'>('hub');
+  const [hubSearch, setHubSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'planning' | 'active' | 'on_hold' | 'completed' | 'archived'>('all');
+  const [showArchived, setShowArchived] = useState(false);
 
   const [tasks, setTasks] = useState(TODAY_TASKS);
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
@@ -76,10 +94,13 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
   };
 
   const handleProjectCreated = (newProject: ProjectCardItem) => {
-    const withClient = { ...newProject, clientId: newProject.clientId };
-    updateProject(withClient);
-    setProjects([withClient, ...projects.filter((p) => p.id !== withClient.id)]);
-    setSelectedProject(withClient);
+    const created = addProject({
+      ...newProject,
+      status: newProject.status || 'planning',
+      archived: false,
+      milestones: newProject.milestones || [],
+    });
+    setSelectedProject(created);
   };
 
   const handleUpdateProject = (updated: ProjectCardItem) => {
@@ -175,6 +196,37 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
             <span>Add New Project</span>
           </button>
         </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-[#0b1210] border border-[#1e2a22] p-3">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="w-3.5 h-3.5 text-[#6b7280] absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            value={hubSearch}
+            onChange={(e) => setHubSearch(e.target.value)}
+            placeholder="Search projects, clients…"
+            className="w-full bg-[#141d18] border border-[#1e2a22] rounded-xl pl-8 pr-3 py-2 text-xs text-white"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as any)}
+          className="bg-[#141d18] border border-[#1e2a22] rounded-xl px-2 py-2 text-[11px] text-white"
+        >
+          <option value="all">All statuses</option>
+          <option value="planning">Planning</option>
+          <option value="active">Active</option>
+          <option value="on_hold">On hold</option>
+          <option value="completed">Completed</option>
+          <option value="archived">Archived</option>
+        </select>
+        <label className="flex items-center gap-1.5 text-[11px] text-[#9ca3af] px-2">
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+          Show archived
+        </label>
+        <span className="text-[10px] text-[#6b7280] font-mono ml-auto">
+          {filteredProjects.length} shown
+        </span>
+      </div>
+
       </div>
 
       {/* If Separate Calendar View is selected */}
@@ -187,7 +239,19 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
           <div className="lg:col-span-8 space-y-6">
             {/* Project Cards Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {projects.map((proj) => (
+              {filteredProjects.length === 0 ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-[#1e2a22] p-12 text-center">
+                <p className="text-sm font-bold text-white">No projects match</p>
+                <p className="text-[11px] text-[#9ca3af] mt-1">Adjust filters or create a new engagement.</p>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateProjectOpen(true)}
+                  className="mt-3 px-4 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold"
+                >
+                  Add New Project
+                </button>
+              </div>
+            ) : filteredProjects.map((proj) => (
                 <FolderCard
                   key={proj.id}
                   onOpenDetail={() => setSelectedProject(proj)}
@@ -229,10 +293,38 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
                 >
                   {/* Card Title & Progress */}
                   <div className="mt-2">
-                    <h3 className="text-sm font-bold text-white tracking-tight line-clamp-1 group-hover:text-[#2dd4bf] transition-colors">{proj.title}</h3>
-                    {proj.client && (
-                      <p className="text-[11px] text-[#9ca3af] line-clamp-1 mt-0.5">{proj.client}</p>
-                    )}
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm font-bold text-white tracking-tight line-clamp-1 group-hover:text-[#2dd4bf] transition-colors">{proj.title}</h3>
+                      <button
+                        type="button"
+                        title="Archive project"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirm('Archive this project?')) return;
+                          archiveProject(proj.id);
+                        }}
+                        className="p-1 rounded-lg text-[#6b7280] hover:text-[#fbbf24] hover:bg-[#1a2720] shrink-0"
+                      >
+                        <Archive className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#1b2820] text-[#9ca3af] capitalize">
+                        {proj.status || 'active'}
+                      </span>
+                      {proj.client && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (proj.clientId) navigate({ tab: 'clients', focus: { kind: 'client', id: proj.clientId } });
+                          }}
+                          className="text-[11px] text-[#2dd4bf] line-clamp-1 hover:underline"
+                        >
+                          {proj.client}
+                        </button>
+                      )}
+                    </div>
 
                     <div className="flex items-center justify-between text-xs text-[#9ca3af] mt-2.5 mb-1.5 font-medium">
                       <span>{proj.tasksCount} tasks</span>

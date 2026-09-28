@@ -11,6 +11,7 @@ import {
 } from '@/data/clientsData';
 import { useAgency } from '@/context/AgencyContext';
 import BulkImportLeadsModal from '@/components/crm/BulkImportLeadsModal';
+import PortalAdminPanel from '@/components/portal/PortalAdminPanel';
 import { formatPKR } from '@/data/financialData';
 
 const SERVICE_OPTIONS: ServiceLine[] = [
@@ -456,6 +457,7 @@ export default function ClientsView() {
                   </button>
                 ))}
               </div>
+              <PortalAdminPanel clientId={selected.id} clientName={selected.company} />
             </>
           )}
         </div>

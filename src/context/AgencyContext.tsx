@@ -15,7 +15,15 @@ import {
   ServiceLine,
 } from '@/data/clientsData';
 import { CRM_LEADS, LeadCard, LeadActivity, CallOutcome } from '@/data/crmData';
-import { OMNYSYNC_PROJECTS, ProjectCardItem, TEAM_MEMBERS } from '@/data/projectsData';
+import {
+  ClientPortalAccount,
+  DEFAULT_PORTAL_MODULES,
+  INITIAL_PORTAL_ACCOUNTS,
+  generatePortalPassword,
+  suggestPortalUsername,
+} from '@/data/portalAccounts';
+import { DEFAULT_FINANCE_SETTINGS, FinanceSettings } from '@/data/financeSettings';
+import { OMNYSYNC_PROJECTS, ProjectCardItem, TEAM_MEMBERS, ProjectStatus, ProjectMilestone } from '@/data/projectsData';
 import {
   CommercialDocument,
   DocumentLineItem,
@@ -114,6 +122,9 @@ interface AgencyContextType {
     input: Omit<AgencyExpense, 'id' | 'status'> & { status?: AgencyExpense['status'] }
   ) => AgencyExpense;
   updateProject: (project: ProjectCardItem) => void;
+  addProject: (project: Omit<ProjectCardItem, 'id' | 'progressPercent' | 'tasksCount' | 'avatarsCount' | 'spent'> & Partial<ProjectCardItem>) => ProjectCardItem;
+  archiveProject: (id: string) => void;
+  deleteProject: (id: string) => void;
   addLead: (lead: LeadCard) => void;
   updateLead: (lead: LeadCard) => void;
   importLeads: (leads: LeadCard[]) => void;
@@ -178,9 +189,20 @@ interface AgencyContextType {
     activities: ActivityEvent[];
   };
 
+  portalAccounts: ClientPortalAccount[];
+  createPortalAccount: (clientId: string) => { account: ClientPortalAccount; password: string };
+  updatePortalAccount: (id: string, updates: Partial<ClientPortalAccount>) => void;
+  resetPortalPassword: (id: string) => string;
+  deletePortalAccount: (id: string) => void;
+  getPortalForClient: (clientId: string) => ClientPortalAccount | undefined;
+  authenticatePortal: (username: string, password: string) => ClientPortalAccount | null;
+  deleteLead: (id: string) => void;
+  financeSettings: FinanceSettings;
+  updateFinanceSettings: (updates: Partial<FinanceSettings>) => void;
   agencyMetrics: {
     activeClients: number;
     mrr: number;
+    arr: number;
     pipelineValue: number;
     openProjects: number;
     receivables: number;
@@ -189,6 +211,9 @@ interface AgencyContextType {
     openTasks: number;
     quotesOpen: number;
     invoicesPaid: number;
+    burnMonthly: number;
+    cashOnHand: number;
+    runwayMonths: number | null;
   };
 }
 
@@ -247,6 +272,8 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<AgencyTask[]>(INITIAL_AGENCY_TASKS);
   const [tickets, setTickets] = useState<SupportTicket[]>(INITIAL_SUPPORT_TICKETS);
   const [portalClientId, setPortalClientId] = useState<string>('cli-1');
+  const [portalAccounts, setPortalAccounts] = useState<ClientPortalAccount[]>(INITIAL_PORTAL_ACCOUNTS);
+  const [financeSettings, setFinanceSettings] = useState<FinanceSettings>(DEFAULT_FINANCE_SETTINGS);
   const [navigation, setNavigation] = useState<AgencyNavigation | null>(null);
   const [pendingFocus, setPendingFocus] = useState<AgencyFocus | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -268,6 +295,8 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
         if (parsed.tasks?.length) setTasks(parsed.tasks);
         if (parsed.tickets?.length) setTickets(parsed.tickets);
         if (parsed.portalClientId) setPortalClientId(parsed.portalClientId);
+        if (parsed.portalAccounts?.length) setPortalAccounts(parsed.portalAccounts);
+        if (parsed.financeSettings) setFinanceSettings(parsed.financeSettings);
       }
     } catch {
       /* ignore */
@@ -792,7 +821,13 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateTask = useCallback((task: AgencyTask) => {
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    const stamped: AgencyTask = {
+      ...task,
+      updatedAt: new Date().toISOString(),
+      updatedBy: task.updatedBy || TEAM_MEMBERS[0]?.name || 'You',
+      completed: (task.status || (task.completed ? 'done' : 'todo')) === 'done',
+    };
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? stamped : t)));
   }, []);
 
   const deleteTask = useCallback((id: string) => {
@@ -979,15 +1014,107 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
     [portalClientId, clients, documents, tickets, getProjectsForClient, getHubDocsForClient]
   );
 
-  const agencyMetrics = useMemo(() => {
+  
+  const getPortalForClient = useCallback(
+    (clientId: string) => portalAccounts.find((p) => p.clientId === clientId),
+    [portalAccounts]
+  );
+
+  const createPortalAccount = useCallback(
+    (clientId: string) => {
+      const client = clients.find((c) => c.id === clientId);
+      if (!client) throw new Error('Client not found');
+      const existing = portalAccounts.find((p) => p.clientId === clientId);
+      if (existing) {
+        showToast('Portal already exists for this client');
+        return { account: existing, password: existing.password };
+      }
+      const password = generatePortalPassword();
+      const account: ClientPortalAccount = {
+        id: `portal-${Date.now()}`,
+        clientId,
+        username: suggestPortalUsername(client.company),
+        password,
+        enabled: true,
+        modules: { ...DEFAULT_PORTAL_MODULES },
+        createdAt: today(),
+        updatedAt: today(),
+      };
+      setPortalAccounts((prev) => [account, ...prev]);
+            showToast('Portal created — copy the password now');
+      return { account, password };
+    },
+    [clients, portalAccounts, showToast]
+  );
+
+  const updatePortalAccount = useCallback(
+    (id: string, updates: Partial<ClientPortalAccount>) => {
+      setPortalAccounts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt: today() } : p))
+      );
+      showToast('Portal settings saved');
+    },
+    [showToast]
+  );
+
+  const resetPortalPassword = useCallback(
+    (id: string) => {
+      const password = generatePortalPassword();
+      setPortalAccounts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, password, updatedAt: today() } : p))
+      );
+            showToast('Password reset — copy it now');
+      return password;
+    },
+    [showToast]
+  );
+
+  const deletePortalAccount = useCallback(
+    (id: string) => {
+      setPortalAccounts((prev) => prev.filter((p) => p.id !== id));
+      showToast('Portal removed');
+    },
+    [showToast]
+  );
+
+  const authenticatePortal = useCallback(
+    (username: string, password: string) => {
+      const account = portalAccounts.find(
+        (p) => p.enabled && p.username === username.trim() && p.password === password
+      );
+      if (!account) return null;
+      setPortalAccounts((prev) =>
+        prev.map((p) =>
+          p.id === account.id ? { ...p, lastLoginAt: new Date().toISOString() } : p
+        )
+      );
+      setPortalClientId(account.clientId);
+      return account;
+    },
+    [portalAccounts]
+  );
+
+  const updateFinanceSettings = useCallback(
+    (updates: Partial<FinanceSettings>) => {
+      setFinanceSettings((prev) => ({
+        ...prev,
+        ...updates,
+        updatedAt: today(),
+      }));
+      showToast('Finance settings updated');
+    },
+    [showToast]
+  );
+
+const agencyMetrics = useMemo(() => {
     const activeClients = clients.filter((c) => c.status === 'Active' || c.status === 'Onboarding').length;
     const mrr = clients
       .filter((c) => c.status === 'Active' || c.status === 'Onboarding')
-      .reduce((s, c) => s + c.mrr, 0);
+      .reduce((s, c) => s + (c.mrr || 0), 0);
     const pipelineValue = leads
       .filter((l) => l.status !== 'Converted' && l.status !== 'Lost')
       .reduce((s, l) => s + (l.estimatedValue || 0), 0);
-    const openProjects = projects.filter((p) => p.progressPercent < 100).length;
+    const openProjects = projects.filter((p) => p.progressPercent < 100 && !p.archived).length;
     const invoicesList = documents.filter((d) => d.docType === 'invoice');
     const receivables = invoicesList
       .filter((d) => d.status === 'sent' || d.status === 'draft')
@@ -1001,9 +1128,21 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
         (d.status === 'draft' || d.status === 'sent')
     ).length;
     const invoicesPaid = invoicesList.filter((d) => d.status === 'paid').length;
+    const arr = mrr * 12;
+    const expenseMonthlyProxy = expenses.length
+      ? Math.round(expensesTotal / Math.max(1, Math.min(expenses.length, 6)))
+      : 0;
+    const burnMonthly =
+      (financeSettings.monthlyPayroll || 0) +
+      (financeSettings.fixedOpex || 0) +
+      expenseMonthlyProxy;
+    const cashOnHand = financeSettings.cashOnHand || 0;
+    const runwayMonths =
+      burnMonthly > 0 ? Math.round((cashOnHand / burnMonthly) * 10) / 10 : null;
     return {
       activeClients,
       mrr,
+      arr,
       pipelineValue,
       openProjects,
       receivables,
@@ -1012,8 +1151,11 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
       openTasks,
       quotesOpen,
       invoicesPaid,
+      burnMonthly,
+      cashOnHand,
+      runwayMonths,
     };
-  }, [clients, leads, projects, documents, payments, expenses, tasks]);
+  }, [clients, leads, projects, documents, payments, expenses, tasks, financeSettings]);
 
 
   const updateProject = useCallback((project: ProjectCardItem) => {
@@ -1026,6 +1168,64 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addProject = useCallback(
+    (
+      input: Omit<ProjectCardItem, 'id' | 'progressPercent' | 'tasksCount' | 'avatarsCount' | 'spent'> &
+        Partial<ProjectCardItem>
+    ) => {
+      const project: ProjectCardItem = {
+        ...input,
+        id: input.id || `p-${Date.now()}`,
+        themeColor: input.themeColor || 'purple',
+        bgGradient: input.bgGradient || 'bg-gradient-to-br from-[#6d4cb8] to-[#5939a8]',
+        team: input.team?.length ? input.team : [TEAM_MEMBERS[0]],
+        category: input.category || 'Custom Software',
+        title: input.title || 'New project',
+        deadline: input.deadline || today(),
+        budget: input.budget ?? 0,
+        description: input.description || '',
+        client: input.client,
+        clientId: input.clientId,
+        progressPercent: input.progressPercent ?? 0,
+        tasksCount: input.tasksCount ?? 0,
+        avatarsCount: input.avatarsCount ?? (input.team?.length || 1),
+        spent: input.spent ?? 0,
+        status: input.status || 'planning',
+        archived: input.archived ?? false,
+        milestones: input.milestones || [],
+        updatedAt: today(),
+      };
+      setProjects((prev) => [project, ...prev]);
+      showToast('Project created');
+      return project;
+    },
+    [showToast]
+  );
+
+  const archiveProject = useCallback(
+    (id: string) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, archived: true, status: 'archived' as ProjectStatus, updatedAt: today() }
+            : p
+        )
+      );
+      showToast('Project archived');
+    },
+    [showToast]
+  );
+
+  const deleteProject = useCallback(
+    (id: string) => {
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setTasks((prev) => prev.filter((t) => t.projectId !== id));
+      showToast('Project deleted');
+    },
+    [showToast]
+  );
+
+
   const addLead = useCallback((lead: LeadCard) => {
     setLeads((prev) => [lead, ...prev]);
   }, []);
@@ -1033,6 +1233,15 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
   const updateLead = useCallback((lead: LeadCard) => {
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? lead : l)));
   }, []);
+
+  const deleteLead = useCallback(
+    (id: string) => {
+      setLeads((prev) => prev.filter((l) => l.id !== id));
+      setLeadActivities((prev) => prev.filter((a) => a.leadId !== id));
+      showToast('Lead deleted');
+    },
+    [showToast]
+  );
 
   const importLeads = useCallback((incoming: LeadCard[]) => {
     if (!incoming.length) return;
@@ -1158,6 +1367,9 @@ const addLeadActivity = useCallback(
       recordPayment,
       addExpense,
       updateProject,
+      addProject,
+      archiveProject,
+      deleteProject,
       addLead,
       updateLead,
       importLeads,
@@ -1194,6 +1406,16 @@ const addLeadActivity = useCallback(
       addTicket,
       replyToTicket,
       getPortalBundle,
+      portalAccounts,
+      createPortalAccount,
+      updatePortalAccount,
+      resetPortalPassword,
+      deletePortalAccount,
+      getPortalForClient,
+      authenticatePortal,
+      deleteLead,
+      financeSettings,
+      updateFinanceSettings,
       agencyMetrics,
     }),
     [

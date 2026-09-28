@@ -48,7 +48,19 @@ export default function AgencyBillingView({ subTab, onSubTabChange }: AgencyBill
     navigate,
     consumeFocus,
     getClient,
+    agencyMetrics,
+    financeSettings,
+    updateFinanceSettings,
   } = useAgency();
+  const [cashDraft, setCashDraft] = useState(String(financeSettings.cashOnHand));
+  const [payrollDraft, setPayrollDraft] = useState(String(financeSettings.monthlyPayroll));
+  const [opexDraft, setOpexDraft] = useState(String(financeSettings.fixedOpex));
+
+  useEffect(() => {
+    setCashDraft(String(financeSettings.cashOnHand));
+    setPayrollDraft(String(financeSettings.monthlyPayroll));
+    setOpexDraft(String(financeSettings.fixedOpex));
+  }, [financeSettings]);
 
   const [search, setSearch] = useState('');
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -423,6 +435,77 @@ export default function AgencyBillingView({ subTab, onSubTabChange }: AgencyBill
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="rounded-2xl bg-gradient-to-br from-[#121915] to-[#0f1a16] border border-[#2dd4bf]/25 p-5 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">Startup runway & recurring KPIs</h3>
+                <p className="text-[11px] text-[#9ca3af] mt-0.5">
+                  MRR from active client retainers · Burn = payroll + fixed opex + expense proxy · Runway = cash ÷ burn
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+              {[
+                { label: 'MRR', value: formatPKR(agencyMetrics.mrr, true), tone: 'text-[#2dd4bf]' },
+                { label: 'ARR', value: formatPKR(agencyMetrics.arr, true), tone: 'text-[#38bdf8]' },
+                { label: 'Burn / mo', value: formatPKR(agencyMetrics.burnMonthly, true), tone: 'text-[#f87171]' },
+                { label: 'Cash on hand', value: formatPKR(agencyMetrics.cashOnHand, true), tone: 'text-[#fbbf24]' },
+                {
+                  label: 'Runway',
+                  value:
+                    agencyMetrics.runwayMonths == null
+                      ? '∞'
+                      : `${agencyMetrics.runwayMonths} mo`,
+                  tone: 'text-[#b8ff00]',
+                },
+              ].map((k) => (
+                <div key={k.label} className="rounded-xl bg-[#0b1210] border border-[#1e2a22] p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-bold">{k.label}</p>
+                  <p className={`text-lg font-black mt-1 ${k.tone}`}>{k.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="grid sm:grid-cols-3 gap-2">
+              <label className="text-[10px] text-[#9ca3af] space-y-1">
+                <span>Cash / equity (PKR)</span>
+                <input
+                  value={cashDraft}
+                  onChange={(e) => setCashDraft(e.target.value)}
+                  className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-lg px-2 py-1.5 text-xs text-white"
+                />
+              </label>
+              <label className="text-[10px] text-[#9ca3af] space-y-1">
+                <span>Monthly payroll (PKR)</span>
+                <input
+                  value={payrollDraft}
+                  onChange={(e) => setPayrollDraft(e.target.value)}
+                  className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-lg px-2 py-1.5 text-xs text-white"
+                />
+              </label>
+              <label className="text-[10px] text-[#9ca3af] space-y-1">
+                <span>Fixed opex (PKR)</span>
+                <input
+                  value={opexDraft}
+                  onChange={(e) => setOpexDraft(e.target.value)}
+                  className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-lg px-2 py-1.5 text-xs text-white"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                updateFinanceSettings({
+                  cashOnHand: parseFloat(cashDraft) || 0,
+                  monthlyPayroll: parseFloat(payrollDraft) || 0,
+                  fixedOpex: parseFloat(opexDraft) || 0,
+                })
+              }
+              className="px-3 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold"
+            >
+              Save runway inputs
+            </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

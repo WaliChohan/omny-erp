@@ -28,6 +28,8 @@ export interface AgencyTask {
   completed: boolean;
   status?: TaskStatus;
   createdAt: string;
+  updatedAt?: string;
+  updatedBy?: string;
   assignee?: TeamMember;
   clientId?: string;
   projectId?: string;
