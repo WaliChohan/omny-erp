@@ -85,7 +85,7 @@ export default function ProjectChatPanel({ projectId, projectTitle }: ProjectCha
         <Hash className="w-4 h-4 text-[#2dd4bf]" />
         <div>
           <p className="text-xs font-bold text-white">#{projectTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 28)}</p>
-          <p className="text-[10px] text-[#6b7280]">Per-project ops thread · local mock</p>
+          <p className="text-[10px] text-[#6b7280]">Per-project ops thread · use Whiteboard tab for sketches</p>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

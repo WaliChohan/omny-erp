@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ERPDocument } from '@/types/documentEngine';
+import { ERPDocument, ProposalSection } from '@/types/documentEngine';
 import LetterheadHeader from './LetterheadHeader';
 import LetterheadFooter from './LetterheadFooter';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
@@ -12,6 +12,11 @@ interface DocumentLayoutProps {
 }
 
 export default function DocumentLayout({ document, isPreview = false }: DocumentLayoutProps) {
+  const isSow =
+    document.type === 'proposal' &&
+    (!!document.proposalHeadline?.toLowerCase().includes('statement of work') ||
+      !!document.proposalHeadline?.toLowerCase().includes('sow'));
+
   const getDocumentTag = () => {
     switch (document.type) {
       case 'invoice':
@@ -21,11 +26,47 @@ export default function DocumentLayout({ document, isPreview = false }: Document
       case 'quotation':
         return `QUOTATION #${document.docNumber}`;
       case 'proposal':
-        return `PROPOSAL #${document.docNumber}`;
+        return isSow ? `STATEMENT OF WORK #${document.docNumber}` : `PROPOSAL #${document.docNumber}`;
       default:
         return `#${document.docNumber}`;
     }
   };
+
+  const defaultSowSections: ProposalSection[] = [
+    {
+      id: 'sow-1',
+      sectionNumber: '01',
+      title: 'Scope of Work',
+      content:
+        document.notes ||
+        'OMNYSYNC will design, build, and deliver the agreed digital product including discovery, UI/UX, engineering, QA, and launch support as outlined in the line items below.',
+    },
+    {
+      id: 'sow-2',
+      sectionNumber: '02',
+      title: 'Deliverables & Milestones',
+      content:
+        'Phased delivery with milestone reviews. Each invoice milestone corresponds to accepted deliverables. Change requests outside scope are quoted separately.',
+    },
+    {
+      id: 'sow-3',
+      sectionNumber: '03',
+      title: 'Timeline & Assumptions',
+      content:
+        'Timeline assumes timely client feedback (≤3 business days). Client provides brand assets, content, and staging access as required.',
+    },
+    {
+      id: 'sow-4',
+      sectionNumber: '04',
+      title: 'Commercial Terms',
+      content:
+        document.terms ||
+        'Fees in PKR as listed. 40% kickoff, balance on milestones. Net 15. Intellectual property transfers upon full payment.',
+    },
+  ];
+
+  const proposalSections: ProposalSection[] =
+    document.sections && document.sections.length > 0 ? document.sections : isSow ? defaultSowSections : [];
 
   const formatCurrency = (amount: number) => {
     const symbolMap: Record<string, string> = {
@@ -35,7 +76,8 @@ export default function DocumentLayout({ document, isPreview = false }: Document
       EUR: '€',
     };
     const prefix = symbolMap[document.currency] || '$';
-    return `${prefix}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const locale = document.currency === 'PKR' ? 'en-PK' : 'en-US';
+    return `${prefix}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -103,22 +145,45 @@ export default function DocumentLayout({ document, isPreview = false }: Document
             </div>
           </div>
 
+          
+          {document.type === 'quotation' && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900 print:break-inside-avoid">
+              <p className="font-extrabold uppercase tracking-wider text-[10px] text-sky-700">Quotation</p>
+              <p className="mt-1 leading-relaxed">
+                This quotation is valid until <strong>{document.dueDate}</strong>. Prices are in{' '}
+                <strong>{document.currency}</strong> and exclude change requests outside the listed scope.
+              </p>
+            </div>
+          )}
+
+          {document.type === 'invoice' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950 print:break-inside-avoid">
+              <p className="font-extrabold uppercase tracking-wider text-[10px] text-amber-700">Invoice due</p>
+              <p className="mt-1 leading-relaxed">
+                Please remit <strong>{formatCurrency(document.grandTotal)}</strong> by{' '}
+                <strong>{document.dueDate}</strong>. Reference <strong>{document.docNumber}</strong> on your transfer.
+              </p>
+            </div>
+          )}
+
           {/* Special Proposal Headline & Subhead (if proposal) */}
-          {document.type === 'proposal' && document.proposalHeadline && (
+          {document.type === 'proposal' && (
             <div className="py-4 space-y-2">
               <h1 className="text-2xl font-black text-[#0B132B] leading-tight">
-                {document.proposalHeadline}
+                {document.proposalHeadline ||
+                  (isSow ? 'Statement of Work' : 'Project Proposal')}
               </h1>
-              {document.proposalSubhead && (
-                <p className="text-sm font-semibold text-indigo-900">{document.proposalSubhead}</p>
-              )}
+              <p className="text-sm font-semibold text-indigo-900">
+                {document.proposalSubhead ||
+                  'Prepared by OMNYSYNC — websites, custom software, SEO & apps for home-services brands.'}
+              </p>
             </div>
           )}
 
           {/* Proposal Multi-Section Renderer */}
-          {document.type === 'proposal' && document.sections && document.sections.length > 0 && (
+          {document.type === 'proposal' && proposalSections.length > 0 && (
             <div className="space-y-8">
-              {document.sections.map((sec) => (
+              {proposalSections.map((sec) => (
                 <div key={sec.id} className="space-y-3 print:break-inside-avoid">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 block">
                     {sec.sectionNumber}
@@ -253,7 +318,19 @@ export default function DocumentLayout({ document, isPreview = false }: Document
                 <p className="text-slate-600 leading-relaxed">{document.notes}</p>
               </div>
             )}
-            {document.terms && (
+            {document.type === 'invoice' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs print:break-inside-avoid space-y-1">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Bank transfer details (PKR)
+              </p>
+              <p className="font-bold text-slate-800">OMNYSYNC Technologies</p>
+              <p className="text-slate-600">Bank: Habib Bank Limited (HBL) · Account: 1231-7901234567-01</p>
+              <p className="text-slate-600">IBAN: PK00 HABB 0012 3179 0123 4567 · SWIFT: HABBPKKA</p>
+              <p className="text-slate-500">Email remittance advice to billing@omnysync.com</p>
+            </div>
+          )}
+
+          {document.terms && (
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
                 <span className="text-[10px] font-bold uppercase text-slate-400 block">
                   Terms & Conditions

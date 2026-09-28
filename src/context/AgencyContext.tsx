@@ -117,6 +117,7 @@ interface AgencyContextType {
   addLead: (lead: LeadCard) => void;
   updateLead: (lead: LeadCard) => void;
   importLeads: (leads: LeadCard[]) => void;
+  importClients: (clients: AgencyClient[]) => void;
   leadActivities: LeadActivity[];
   addLeadActivity: (activity: Omit<LeadActivity, 'id' | 'createdAt'> & { createdAt?: string }) => LeadActivity;
   getLeadActivities: (leadId: string) => LeadActivity[];
@@ -1064,7 +1065,31 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
     showToast(`Imported ${incoming.length} lead(s)`);
   }, [showToast]);
 
-  const addLeadActivity = useCallback(
+  
+  const importClients = useCallback(
+    (incoming: AgencyClient[]) => {
+      if (!incoming.length) return;
+      setClients((prev) => {
+        const emails = new Set(prev.map((c) => c.email.toLowerCase()).filter(Boolean));
+        const companies = new Set(prev.map((c) => c.company.toLowerCase()).filter(Boolean));
+        const next = [...prev];
+        for (const c of incoming) {
+          const email = (c.email || '').toLowerCase();
+          const company = (c.company || '').toLowerCase();
+          if (email && emails.has(email)) continue;
+          if (company && companies.has(company)) continue;
+          next.push(c);
+          if (email) emails.add(email);
+          if (company) companies.add(company);
+        }
+        return next;
+      });
+      showToast(`Imported ${incoming.length} client(s)`);
+    },
+    [showToast]
+  );
+
+const addLeadActivity = useCallback(
     (activity: Omit<LeadActivity, 'id' | 'createdAt'> & { createdAt?: string }) => {
       const row: LeadActivity = {
         ...activity,
@@ -1136,6 +1161,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
       addLead,
       updateLead,
       importLeads,
+      importClients,
       leadActivities,
       addLeadActivity,
       getLeadActivities,

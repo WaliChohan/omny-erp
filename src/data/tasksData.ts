@@ -5,6 +5,19 @@ export type TaskCategory = 'Finance' | 'Sales' | 'Dev' | 'Operations' | 'General
 
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
 
+export interface TaskChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface TaskComment {
+  id: string;
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface AgencyTask {
   id: string;
   title: string;
@@ -18,7 +31,16 @@ export interface AgencyTask {
   assignee?: TeamMember;
   clientId?: string;
   projectId?: string;
+  checklist?: TaskChecklistItem[];
+  comments?: TaskComment[];
 }
+
+export const TASK_STATUS_COLUMNS: { id: TaskStatus; label: string; tone: string }[] = [
+  { id: 'todo', label: 'To Do', tone: 'border-[#6b7280]' },
+  { id: 'in_progress', label: 'In Progress', tone: 'border-[#38bdf8]' },
+  { id: 'review', label: 'Review', tone: 'border-[#a855f7]' },
+  { id: 'done', label: 'Done', tone: 'border-[#10b981]' },
+];
 
 export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
   {
@@ -34,6 +56,19 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     assignee: TEAM_MEMBERS[0],
     clientId: 'cli-1',
     projectId: 'p-1',
+    checklist: [
+      { id: 'c1', text: 'Confirm scope bullets with AM', done: true },
+      { id: 'c2', text: 'Attach pricing sheet', done: false },
+      { id: 'c3', text: 'Send via Documents hub', done: false },
+    ],
+    comments: [
+      {
+        id: 'cm1',
+        author: TEAM_MEMBERS[0].name,
+        body: 'Client asked for Net-15 and phased go-live.',
+        createdAt: '2026-09-27T11:00:00.000Z',
+      },
+    ],
   },
   {
     id: 'task-2',
@@ -48,6 +83,11 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     assignee: TEAM_MEMBERS[1],
     clientId: 'cli-2',
     projectId: 'p-2',
+    checklist: [
+      { id: 'c1', text: 'Share sprint board link', done: false },
+      { id: 'c2', text: 'Confirm offline sync requirement', done: false },
+    ],
+    comments: [],
   },
   {
     id: 'task-3',
@@ -61,6 +101,8 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     createdAt: '2026-09-25',
     assignee: TEAM_MEMBERS[2],
     clientId: 'cli-3',
+    checklist: [{ id: 'c1', text: 'Export GSC CSV', done: true }],
+    comments: [],
   },
   {
     id: 'task-4',
@@ -70,9 +112,12 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     priority: 'Medium',
     dueDate: '2026-10-02',
     completed: false,
+    status: 'todo',
     createdAt: '2026-09-28',
     assignee: TEAM_MEMBERS[3],
     clientId: 'cli-4',
+    checklist: [],
+    comments: [],
   },
   {
     id: 'task-5',
@@ -82,8 +127,11 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     priority: 'Low',
     dueDate: '2026-10-03',
     completed: false,
+    status: 'todo',
     createdAt: '2026-09-28',
     assignee: TEAM_MEMBERS[4],
     clientId: 'cli-5',
+    checklist: [],
+    comments: [],
   },
 ];

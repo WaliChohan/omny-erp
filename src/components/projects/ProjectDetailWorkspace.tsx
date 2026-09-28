@@ -4,7 +4,7 @@ import { useAgency } from '@/context/AgencyContext';
 import type { AgencyTask, TaskStatus } from '@/data/tasksData';
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, FileText, LayoutGrid, Plus, Trash2, Users, PenTool, Check, X, Sparkles, Link as LinkIcon, Download, AlertCircle, TrendingUp, Tag, Kanban, Edit2, Layers, RotateCcw, MessageSquare, FilePlus2, Receipt, ScrollText } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, FileText, LayoutGrid, Plus, Trash2, Users, PenTool, Check, X, Sparkles, Link as LinkIcon, Download, AlertCircle, TrendingUp, Tag, Kanban, Edit2, Layers, RotateCcw, MessageSquare, FilePlus2, Receipt, ScrollText, LayoutList, Columns3 } from 'lucide-react';
 import {
   ProjectCardItem,
   ProjectTask,
@@ -15,6 +15,8 @@ import {
 import { COMMERCIAL_DOCUMENTS, CommercialDocument } from '@/data/financialData';
 import ProjectCalendarView from '@/components/projects/ProjectCalendarView';
 import ProjectChatPanel from '@/components/projects/ProjectChatPanel';
+import ProjectKanbanBoard from '@/components/projects/ProjectKanbanBoard';
+import ProjectTaskDrawer from '@/components/projects/ProjectTaskDrawer';
 import FolderCard from '@/components/common/FolderCard';
 import GooeyFolderTabs, { TabItem } from '@/components/ui/GooeyFolderTabs';
 
@@ -134,6 +136,9 @@ export default function ProjectDetailWorkspace({
   // Task filter inside project
   const [taskFilterAssignee, setTaskFilterAssignee] = useState<string>('all');
   const [taskFilterStatus, setTaskFilterStatus] = useState<'all' | 'pending' | 'completed' | TaskStatus>('all');
+  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban'>('kanban');
+  const [editingTask, setEditingTask] = useState<AgencyTask | null>(null);
+  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
 
   // Compute progress
   const completedTasksCount = tasks.filter((t) => t.completed).length;
@@ -256,6 +261,35 @@ export default function ProjectDetailWorkspace({
       proposalSubhead:
         docType === 'sow'
           ? 'Scope, deliverables, timeline, and commercial terms for this engagement.'
+          : undefined,
+      sections:
+        docType === 'sow'
+          ? [
+              {
+                id: 's1',
+                sectionNumber: '01',
+                title: 'Scope of Work',
+                content: `OMNYSYNC will deliver ${project.title} including discovery, design, build, QA, and launch support.`,
+              },
+              {
+                id: 's2',
+                sectionNumber: '02',
+                title: 'Deliverables',
+                content: 'Milestone-based deliverables as listed in the commercial line items. Acceptance within 5 business days.',
+              },
+              {
+                id: 's3',
+                sectionNumber: '03',
+                title: 'Timeline',
+                content: `Target completion ${project.deadline}. Client feedback SLA: 3 business days.`,
+              },
+              {
+                id: 's4',
+                sectionNumber: '04',
+                title: 'Fees & Payment',
+                content: 'Fees in PKR. Kickoff deposit + milestone invoices. Net 15. IP transfers on full payment.',
+              },
+            ]
           : undefined,
       items: [
         {
@@ -524,6 +558,25 @@ export default function ProjectDetailWorkspace({
         {/* ── TAB 1: WORKSPACE DASHBOARD / OVERVIEW ─────────────────────────── */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => { setActiveTab('tasks'); setTaskViewMode('kanban'); }} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
+                Open task board
+              </button>
+              <button type="button" onClick={() => setActiveTab('chat')} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
+                Project chat
+              </button>
+              <button type="button" onClick={() => setActiveTab('whiteboard')} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
+                Whiteboard
+              </button>
+              <button type="button" onClick={() => setActiveTab('docs')} className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[11px] font-bold text-white hover:border-[#2dd4bf]/40">
+                Docs & SOW
+              </button>
+              {project.clientId && onOpenClient && (
+                <button type="button" onClick={onOpenClient} className="px-3 py-2 rounded-xl bg-[#2dd4bf]/10 border border-[#2dd4bf]/30 text-[11px] font-bold text-[#2dd4bf]">
+                  Open client
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FolderCard
                 onOpenDetail={() => setActiveTab('tasks')}
@@ -752,10 +805,32 @@ export default function ProjectDetailWorkspace({
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121915] border border-[#1e2d24] p-5 rounded-2xl">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Project Tasks & To-Do List</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Project Tasks</h2>
               <p className="text-xs text-[#9ca3af] mt-0.5">
-                Assign deliverables directly to team members with target deadlines and priority tags
+                ClickUp-style board — drag across columns, open a card for checklist & comments
               </p>
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="flex bg-[#0b1210] border border-[#1e2a22] rounded-xl p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setTaskViewMode('kanban')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 ${
+                    taskViewMode === 'kanban' ? 'bg-[#2dd4bf] text-[#052e24]' : 'text-[#9ca3af]'
+                  }`}
+                >
+                  <Columns3 className="w-3.5 h-3.5" /> Board
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaskViewMode('list')}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 ${
+                    taskViewMode === 'list' ? 'bg-[#2dd4bf] text-[#052e24]' : 'text-[#9ca3af]'
+                  }`}
+                >
+                  <LayoutList className="w-3.5 h-3.5" /> List
+                </button>
+              </div>
             </div>
 
             <button
@@ -802,6 +877,19 @@ export default function ProjectDetailWorkspace({
             </div>
           </div>
 
+          {taskViewMode === 'kanban' && (
+            <ProjectKanbanBoard
+              tasks={filteredTasks}
+              onStatusChange={(id, status) => setTaskStatus(id, status)}
+              onOpenTask={(t) => {
+                setEditingTask(t);
+                setIsTaskDrawerOpen(true);
+              }}
+            />
+          )}
+
+          {taskViewMode === 'list' && (
+          <>
           {/* Tasks List */}
           <div className="bg-[#121915] border border-[#1e2d24] rounded-2xl overflow-hidden divide-y divide-[#18241d]">
             {filteredTasks.length === 0 ? (
@@ -888,6 +976,20 @@ export default function ProjectDetailWorkspace({
               ))
             )}
           </div>
+
+          </>
+          )}
+
+          <ProjectTaskDrawer
+            task={editingTask}
+            isOpen={isTaskDrawerOpen}
+            onClose={() => {
+              setIsTaskDrawerOpen(false);
+              setEditingTask(null);
+            }}
+            onSave={(t) => updateTask(t)}
+            onDelete={(id) => deleteTask(id)}
+          />
 
           {/* Add Task Modal */}
           {isAddingTask && (

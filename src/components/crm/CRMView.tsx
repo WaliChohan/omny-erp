@@ -478,6 +478,7 @@ export default function CRMView() {
       <BulkImportLeadsModal
         isOpen={isBulkImportOpen}
         onClose={() => setIsBulkImportOpen(false)}
+        entity="leads"
         onImportLeads={handleBulkImport}
       />
 

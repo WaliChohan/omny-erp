@@ -104,7 +104,13 @@ export default function CallDialerPanel({ lead, queue = [], onOpenLead }: CallDi
         <div>
           <p className="text-[10px] uppercase tracking-wider text-[#2dd4bf] font-bold">Speed dialer</p>
           <h3 className="text-sm font-bold text-white mt-0.5">{lead.name}</h3>
-          <p className="text-[11px] text-[#9ca3af]">{lead.phone || 'No phone on file'}</p>
+          {lead.phone ? (
+            <a href={`tel:${lead.phone.replace(/[^0-9+]/g, '')}`} className="text-[11px] text-[#2dd4bf] hover:underline">
+              {lead.phone}
+            </a>
+          ) : (
+            <p className="text-[11px] text-[#9ca3af]">No phone on file</p>
+          )}
         </div>
         <div className="text-right">
           <p className="font-mono text-lg text-white tabular-nums">{fmtDuration(seconds)}</p>
@@ -170,6 +176,18 @@ export default function CallDialerPanel({ lead, queue = [], onOpenLead }: CallDi
         <p className="text-[10px] text-[#9ca3af] font-semibold mb-1.5 uppercase tracking-wider">
           Remarks / notes
         </p>
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {['Interested — send quote', 'Left voicemail', 'Follow up next week', 'Not a fit'].map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => setNotes((n) => (n ? n + ' ' + chip : chip))}
+              className="text-[9px] px-2 py-1 rounded-full bg-[#141d18] border border-[#1e2a22] text-[#9ca3af] hover:text-white"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

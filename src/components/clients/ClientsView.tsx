@@ -1,22 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Search,
-  Plus,
-  Building2,
-  Mail,
-  Phone,
-  MapPin,
-  Briefcase,
-  X,
-  Check,
-  Filter,
-  Users,
-  FileText,
-  Receipt,
-  ExternalLink,
-} from 'lucide-react';
+import { Search, Plus, Building2, Mail, Phone, MapPin, Briefcase, X, Check, Filter, Users, FileText, Receipt, ExternalLink, Upload } from 'lucide-react';
 import {
   CLIENT_STATUS_FILTERS,
   AgencyClient,
@@ -25,6 +10,7 @@ import {
   formatClientPKR,
 } from '@/data/clientsData';
 import { useAgency } from '@/context/AgencyContext';
+import BulkImportLeadsModal from '@/components/crm/BulkImportLeadsModal';
 import { formatPKR } from '@/data/financialData';
 
 const SERVICE_OPTIONS: ServiceLine[] = [
@@ -60,7 +46,9 @@ export default function ClientsView() {
     getDocsForClient,
     navigate,
     consumeFocus,
+    importClients,
   } = useAgency();
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<(typeof CLIENT_STATUS_FILTERS)[number]>('All');
   const [search, setSearch] = useState('');
@@ -149,6 +137,7 @@ export default function ClientsView() {
   };
 
   return (
+    <>
     <div className="space-y-6 animate-in fade-in duration-150">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -157,13 +146,23 @@ export default function ClientsView() {
             Linked to CRM leads, projects, quotes, and invoices.
           </p>
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold hover:bg-[#5eead4] transition-all shadow-md shadow-[#2dd4bf]/20"
-        >
-          <Plus className="w-4 h-4" />
-          Add Client
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsBulkImportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold hover:border-[#2dd4bf]/40"
+          >
+            <Upload className="w-4 h-4 text-[#2dd4bf]" />
+            Import clients
+          </button>
+          <button
+            onClick={() => setIsCreating(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold hover:bg-[#5eead4] transition-all shadow-md shadow-[#2dd4bf]/20"
+          >
+            <Plus className="w-4 h-4" />
+            Add Client
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -230,7 +229,7 @@ export default function ClientsView() {
           <div className="flex-1 overflow-y-auto divide-y divide-[#1a2720]">
             {filtered.length === 0 ? (
               <div className="p-8 text-center text-sm text-[#6b7280]">
-                No clients match. Try another filter or add a new account.
+                No clients match. Import a CSV/TSV roster or add a new account.
               </div>
             ) : (
               filtered.map((c) => (
@@ -546,5 +545,12 @@ export default function ClientsView() {
         </div>
       )}
     </div>
+      <BulkImportLeadsModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+        entity="clients"
+        onImportClients={(rows) => importClients(rows)}
+      />
+    </>
   );
 }
