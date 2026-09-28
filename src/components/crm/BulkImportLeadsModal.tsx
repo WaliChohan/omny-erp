@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import SideDrawer from '@/components/ui/SideDrawer';
 import {
   Upload,
   FileSpreadsheet,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   ArrowRight,
+  Table2,
 } from 'lucide-react';
 import { LeadCard, LeadFilter, LeadSource } from '@/data/crmData';
 
@@ -18,256 +18,350 @@ interface BulkImportLeadsModalProps {
   onImportLeads: (leads: LeadCard[]) => void;
 }
 
-const SAMPLE_CSV = `Full Name,Title,Company,Email,Phone,Priority,Rating,Source
-David Miller,VP Technology,Acme Systems,david.m@acme.com,+1 415 555 0101,Hot Clients,5,LinkedIn
-Sarah Jenkins,Head of Growth,SaaS Velocity,sarah@saasvelocity.com,+1 415 555 0102,Great Interest,4,Email
-Robert Taylor,Chief Architect,DataCore Labs,rtaylor@datacore.io,+1 212 555 0103,Medium Interest,3,Referral
-Michael Chang,Director of Engineering,OmniFlow,mchang@omniflow.com,+1 408 555 0104,Hot Clients,5,LinkedIn`;
+type FieldKey =
+  | 'skip'
+  | 'name'
+  | 'title'
+  | 'company'
+  | 'email'
+  | 'phone'
+  | 'priority'
+  | 'rating'
+  | 'source'
+  | 'status'
+  | 'estimatedValue';
+
+const FIELD_OPTIONS: { key: FieldKey; label: string }[] = [
+  { key: 'skip', label: '— Skip —' },
+  { key: 'name', label: 'Full name' },
+  { key: 'title', label: 'Title / role' },
+  { key: 'company', label: 'Company' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'rating', label: 'Rating (1-5)' },
+  { key: 'source', label: 'Source' },
+  { key: 'status', label: 'Status' },
+  { key: 'estimatedValue', label: 'Est. value (PKR)' },
+];
+
+const SAMPLE = `Full Name\tTitle\tCompany\tEmail\tPhone\tPriority\tRating\tSource
+David Miller\tVP Technology\tAcme HVAC\tdavid@acmehvac.com\t+1 415 555 0101\tHot Clients\t5\tLinkedIn
+Sarah Jenkins\tHead of Growth\tComfortZone\tsarah@comfortzone.io\t+1 415 555 0102\tGreat Interest\t4\tEmail
+Robert Taylor\tOwner\tApex Plumbing\trtaylor@apexplumb.com\t+1 212 555 0103\tMedium Interest\t3\tReferral`;
+
+function splitLine(line: string): string[] {
+  // CSV with quotes OR TSV
+  if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
+  const cols: string[] = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQ = !inQ;
+      continue;
+    }
+    if (ch === ',' && !inQ) {
+      cols.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  cols.push(cur.trim());
+  return cols;
+}
+
+function guessField(header: string): FieldKey {
+  const h = header.toLowerCase().replace(/[_\s]+/g, '');
+  if (/^(fullname|fullname|contact|lead)$/.test(h) || h.includes('fullname')) return 'name';
+  if (/title|role|designation|job/.test(h)) return 'title';
+  if (/company|org|account|business/.test(h)) return 'company';
+  if (/email|mail/.test(h)) return 'email';
+  if (/phone|mobile|cell|tel/.test(h)) return 'phone';
+  if (/priority|heat|tier/.test(h)) return 'priority';
+  if (/rating|score|stars/.test(h)) return 'rating';
+  if (/source|channel|origin/.test(h)) return 'source';
+  if (/status|stage/.test(h)) return 'status';
+  if (/value|amount|deal|budget|pkr|revenue/.test(h)) return 'estimatedValue';
+  return 'skip';
+}
+
+const AVATAR_COLORS = ['bg-[#00e676]', 'bg-[#38bdf8]', 'bg-[#a855f7]', 'bg-[#f59e0b]', 'bg-[#f43f5e]'];
 
 export default function BulkImportLeadsModal({
   isOpen,
   onClose,
   onImportLeads,
 }: BulkImportLeadsModalProps) {
-  const [importMode, setImportMode] = useState<'paste' | 'file'>('paste');
-  const [csvText, setCsvText] = useState('');
-  const [parsedLeads, setParsedLeads] = useState<LeadCard[]>([]);
+  const [rawText, setRawText] = useState('');
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
+  const [mapping, setMapping] = useState<FieldKey[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [step, setStep] = useState<'input' | 'map' | 'preview'>('input');
 
-  const parseCSVContent = (content: string) => {
-    try {
-      const lines = content.trim().split('\n');
-      if (lines.length < 2) {
-        setErrorMsg('CSV must contain a header row and at least one lead row.');
-        setParsedLeads([]);
-        return;
-      }
-
-      const results: LeadCard[] = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const cols = line.split(',').map((c) => c.trim());
-
-        const name = cols[0] || `Lead ${i}`;
-        const title = cols[1] || 'Executive';
-        const company = cols[2] || '';
-        const email = cols[3] || '';
-        const phone = cols[4] || '';
-        const priority = (cols[5] as LeadFilter) || 'Hot Clients';
-        const rating = (parseInt(cols[6], 10) || 4) as 1 | 2 | 3 | 4 | 5;
-        const source = (cols[7] as LeadSource) || 'LinkedIn';
-
-        const initials = name
-          .split(' ')
-          .map((n) => n[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2);
-
-        results.push({
-          id: `imp-${Date.now()}-${i}`,
-          name,
-          title: company ? `${title} at ${company}` : title,
-          company,
-          email,
-          phone,
-          avatarInitials: initials,
-          avatarColor: 'bg-[#00e676]',
-          priority,
-          rating,
-          sources: [source],
-          estimatedValue: 40000 + i * 5000,
-          status: 'Qualified',
-        });
-      }
-
-      setParsedLeads(results);
-      setErrorMsg(null);
-    } catch {
-      setErrorMsg('Failed to parse CSV format. Please ensure valid comma-separated rows.');
-      setParsedLeads([]);
+  const parseTable = (content: string) => {
+    const lines = content
+      .replace(/^\uFEFF/, '')
+      .split(/\r?\n/)
+      .map((l) => l.trimEnd())
+      .filter((l) => l.trim().length > 0);
+    if (lines.length < 2) {
+      setErrorMsg('Need a header row and at least one data row (CSV or TSV).');
+      setHeaders([]);
+      setRows([]);
+      return false;
     }
+    const hdrs = splitLine(lines[0]);
+    const body = lines.slice(1).map(splitLine);
+    const map = hdrs.map(guessField);
+    // Ensure name is mapped somehow
+    if (!map.includes('name') && map[0] === 'skip') map[0] = 'name';
+    setHeaders(hdrs);
+    setRows(body);
+    setMapping(map);
+    setErrorMsg(null);
+    return true;
   };
 
-  const handlePasteChange = (val: string) => {
-    setCsvText(val);
-    if (val.trim()) {
-      parseCSVContent(val);
-    } else {
-      setParsedLeads([]);
-      setErrorMsg(null);
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      setCsvText(text);
-      parseCSVContent(text);
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      setRawText(text);
+      if (parseTable(text)) setStep('map');
     };
     reader.readAsText(file);
   };
 
-  const handleLoadSample = () => {
-    setCsvText(SAMPLE_CSV);
-    parseCSVContent(SAMPLE_CSV);
-  };
+  const previewLeads = useMemo(() => {
+    if (!rows.length || !mapping.length) return [] as LeadCard[];
+    const out: LeadCard[] = [];
+    rows.forEach((cols, i) => {
+      const get = (key: FieldKey) => {
+        const idx = mapping.indexOf(key);
+        return idx >= 0 ? (cols[idx] || '').trim() : '';
+      };
+      const name = get('name') || `Lead ${i + 1}`;
+      const title = get('title') || 'Contact';
+      const company = get('company');
+      const email = get('email');
+      const phone = get('phone');
+      const priority = (get('priority') as LeadFilter) || 'Hot Clients';
+      const ratingRaw = parseInt(get('rating'), 10);
+      const rating = (Number.isFinite(ratingRaw)
+        ? Math.min(5, Math.max(1, ratingRaw))
+        : 3) as 1 | 2 | 3 | 4 | 5;
+      const source = (get('source') as LeadSource) || 'LinkedIn';
+      const statusRaw = get('status');
+      const estimatedValue = parseFloat(get('estimatedValue').replace(/[^0-9.]/g, '')) || undefined;
+      const initials = name
+        .split(/\s+/)
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+      out.push({
+        id: `imp-${Date.now()}-${i}`,
+        name,
+        title: company ? `${title} at ${company}` : title,
+        company,
+        email,
+        phone,
+        avatarInitials: initials || 'LD',
+        avatarColor: AVATAR_COLORS[i % AVATAR_COLORS.length],
+        priority: (['Hot Clients', 'Great Interest', 'Medium Interest', 'Low Interest'] as LeadFilter[]).includes(
+          priority as LeadFilter
+        )
+          ? (priority as LeadFilter)
+          : 'Hot Clients',
+        rating,
+        sources: [source || 'LinkedIn'],
+        status: (statusRaw as LeadCard['status']) || 'New',
+        estimatedValue,
+        createdDate: new Date().toISOString().slice(0, 10),
+      });
+    });
+    return out;
+  }, [rows, mapping]);
 
-  const handleCommitImport = () => {
-    if (parsedLeads.length === 0) return;
-    onImportLeads(parsedLeads);
+  const handleImport = () => {
+    if (!previewLeads.length) {
+      setErrorMsg('Nothing to import.');
+      return;
+    }
+    onImportLeads(previewLeads);
+    setRawText('');
+    setHeaders([]);
+    setRows([]);
+    setMapping([]);
+    setStep('input');
     onClose();
   };
 
   return (
-    <SideDrawer
-      isOpen={isOpen}
-      onClose={onClose}
-      width="max-w-2xl"
-      title={
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#b8ff00]/20 border border-[#b8ff00]/40 flex items-center justify-center text-[#b8ff00]">
-            <Upload className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-white tracking-tight">Bulk Import Leads into CRM</h3>
-            <p className="text-[11px] text-[#9ca3af]">
-              Import contacts via CSV upload or paste comma-separated values directly
-            </p>
-          </div>
-        </div>
-      }
-      footer={
-        <div className="flex items-center justify-end gap-3 w-full">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs text-[#9ca3af] hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={parsedLeads.length === 0}
-            onClick={handleCommitImport}
-            className="px-5 py-2 rounded-xl bg-[#b8ff00] hover:bg-[#a3e600] disabled:opacity-40 disabled:hover:bg-[#b8ff00] text-black font-bold text-xs shadow-md shadow-[#b8ff00]/20 flex items-center gap-1.5 transition-all"
-          >
-            <span>Import {parsedLeads.length} Leads</span>
-            <ArrowRight className="w-3.5 h-3.5 stroke-[3]" />
-          </button>
-        </div>
-      }
-    >
+    <SideDrawer isOpen={isOpen} onClose={onClose} title="Bulk import leads" width="max-w-2xl">
       <div className="space-y-4 text-xs">
-        {/* Mode Selector */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 bg-[#141d18] p-1 rounded-xl border border-[#223328] text-xs font-bold">
-            <button
-              onClick={() => setImportMode('paste')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                importMode === 'paste'
-                  ? 'bg-[#b8ff00] text-black shadow-sm'
-                  : 'text-[#9ca3af] hover:text-white'
-              }`}
-            >
-              Paste CSV
-            </button>
-            <button
-              onClick={() => setImportMode('file')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                importMode === 'file'
-                  ? 'bg-[#b8ff00] text-black shadow-sm'
-                  : 'text-[#9ca3af] hover:text-white'
-              }`}
-            >
-              Upload File
-            </button>
-          </div>
-
-          <button
-            onClick={handleLoadSample}
-            className="text-xs text-[#b8ff00] hover:underline flex items-center gap-1 font-semibold"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Load Sample Leads Data</span>
-          </button>
+        <div className="flex items-center gap-2 text-[11px] text-[#9ca3af]">
+          <span className={step === 'input' ? 'text-[#2dd4bf] font-bold' : ''}>1. Paste / upload</span>
+          <ArrowRight className="w-3 h-3" />
+          <span className={step === 'map' ? 'text-[#2dd4bf] font-bold' : ''}>2. Map columns</span>
+          <ArrowRight className="w-3 h-3" />
+          <span className={step === 'preview' ? 'text-[#2dd4bf] font-bold' : ''}>3. Preview</span>
         </div>
 
-        {/* Input area */}
-        {importMode === 'paste' ? (
-          <div>
+        {step === 'input' && (
+          <>
+            <p className="text-[#9ca3af]">
+              Paste CSV or TSV with a header row. Columns are detected dynamically — map any headers next.
+            </p>
             <textarea
-              rows={6}
-              value={csvText}
-              onChange={(e) => handlePasteChange(e.target.value)}
-              placeholder="Paste comma-separated rows here (Full Name, Title, Company, Email, Phone, Priority, Rating, Source)..."
-              className="w-full bg-[#141d18] border border-[#223328] focus:border-[#b8ff00] rounded-xl p-3 text-white text-xs font-mono outline-none resize-none"
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              rows={10}
+              placeholder="Paste spreadsheet rows here…"
+              className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-xl p-3 text-[#e5e7eb] font-mono text-[11px] focus:outline-none focus:border-[#2dd4bf]/50"
             />
-          </div>
-        ) : (
-          <div className="border-2 border-dashed border-[#223328] hover:border-[#b8ff00] rounded-2xl p-8 text-center bg-[#141d18]/50 transition-colors">
-            <FileSpreadsheet className="w-10 h-10 text-[#9ca3af] mx-auto mb-2" />
-            <p className="text-xs font-bold text-white">Select a CSV file from your computer</p>
-            <p className="text-[11px] text-[#6b7280] mt-1">Supports standard CSV exports from HubSpot, Salesforce, LinkedIn</p>
-            <label className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1b2a22] border border-[#263e32] hover:border-[#b8ff00] text-[#b8ff00] text-xs font-bold cursor-pointer transition-colors">
-              <Upload className="w-3.5 h-3.5" />
-              <span>Browse CSV File</span>
-              <input type="file" accept=".csv,text/csv" onChange={handleFileUpload} className="hidden" />
-            </label>
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="p-3 rounded-xl bg-[#ef4444]/15 border border-[#ef4444]/30 text-xs text-[#f87171] flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {/* Parsed Preview Table */}
-        {parsedLeads.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981]" />
-                <span>Ready to Import ({parsedLeads.length} Leads Detected)</span>
-              </span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRawText(SAMPLE);
+                  if (parseTable(SAMPLE)) setStep('map');
+                }}
+                className="px-3 py-2 rounded-lg bg-[#141d18] border border-[#1e2a22] text-[#9ca3af] hover:text-white flex items-center gap-1.5"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Load sample TSV
+              </button>
+              <label className="px-3 py-2 rounded-lg bg-[#141d18] border border-[#1e2a22] text-[#9ca3af] hover:text-white flex items-center gap-1.5 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" /> Upload .csv / .tsv
+                <input
+                  type="file"
+                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFile(f);
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (parseTable(rawText)) setStep('map');
+                }}
+                className="ml-auto px-4 py-2 rounded-lg bg-[#2dd4bf] text-[#0a0f0d] font-bold flex items-center gap-1.5"
+              >
+                Detect columns <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
+          </>
+        )}
 
-            <div className="border border-[#1e2d24] rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#16201b] text-[#9ca3af] sticky top-0 font-semibold">
+        {step === 'map' && (
+          <>
+            <div className="flex items-center gap-2 text-[#2dd4bf] font-semibold">
+              <Table2 className="w-4 h-4" /> Map {headers.length} columns → lead fields
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {headers.map((h, i) => (
+                <div
+                  key={`${h}-${i}`}
+                  className="flex items-center gap-3 p-2.5 rounded-xl bg-[#141d18] border border-[#1e2a22]"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold truncate">{h || `Column ${i + 1}`}</p>
+                    <p className="text-[10px] text-[#6b7280] truncate">
+                      e.g. {rows[0]?.[i] || '—'}
+                    </p>
+                  </div>
+                  <select
+                    value={mapping[i]}
+                    onChange={(e) => {
+                      const next = [...mapping];
+                      next[i] = e.target.value as FieldKey;
+                      setMapping(next);
+                    }}
+                    className="bg-[#0b1210] border border-[#1e2a22] rounded-lg px-2 py-1.5 text-white"
+                  >
+                    {FIELD_OPTIONS.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStep('input')}
+                className="px-3 py-2 rounded-lg border border-[#1e2a22] text-[#9ca3af]"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep('preview')}
+                disabled={!mapping.includes('name')}
+                className="ml-auto px-4 py-2 rounded-lg bg-[#2dd4bf] text-[#0a0f0d] font-bold disabled:opacity-40"
+              >
+                Preview {rows.length} rows
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 'preview' && (
+          <>
+            <div className="rounded-xl border border-[#1e2a22] overflow-hidden max-h-72 overflow-y-auto">
+              <table className="w-full text-left">
+                <thead className="bg-[#141d18] text-[#9ca3af] sticky top-0">
                   <tr>
-                    <th className="p-2">Name</th>
-                    <th className="p-2">Title & Company</th>
-                    <th className="p-2">Email</th>
-                    <th className="p-2">Priority</th>
-                    <th className="p-2 text-right">Rating</th>
+                    <th className="px-3 py-2 font-semibold">Name</th>
+                    <th className="px-3 py-2 font-semibold">Company</th>
+                    <th className="px-3 py-2 font-semibold">Email</th>
+                    <th className="px-3 py-2 font-semibold">Phone</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#1b2620] bg-[#121915]">
-                  {parsedLeads.map((lead) => (
-                    <tr key={lead.id}>
-                      <td className="p-2 font-bold text-white">{lead.name}</td>
-                      <td className="p-2 text-[#9ca3af] truncate max-w-xs">{lead.title}</td>
-                      <td className="p-2 font-mono text-[11px] text-[#6b7280]">{lead.email || '—'}</td>
-                      <td className="p-2">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#18261e] text-[#b8ff00] border border-[#23382d]">
-                          {lead.priority}
-                        </span>
-                      </td>
-                      <td className="p-2 text-right font-mono font-bold text-white">{lead.rating}/5</td>
+                <tbody>
+                  {previewLeads.slice(0, 50).map((l) => (
+                    <tr key={l.id} className="border-t border-[#1e2a22]">
+                      <td className="px-3 py-2 text-white">{l.name}</td>
+                      <td className="px-3 py-2 text-[#9ca3af]">{l.company || '—'}</td>
+                      <td className="px-3 py-2 text-[#9ca3af]">{l.email || '—'}</td>
+                      <td className="px-3 py-2 text-[#9ca3af]">{l.phone || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStep('map')}
+                className="px-3 py-2 rounded-lg border border-[#1e2a22] text-[#9ca3af]"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleImport}
+                className="ml-auto px-4 py-2 rounded-lg bg-[#b8ff00] text-[#0a0f0d] font-bold flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Import {previewLeads.length} leads
+              </button>
+            </div>
+          </>
+        )}
+
+        {errorMsg && (
+          <div className="flex items-start gap-2 text-[#f87171] bg-[#2a1212] border border-[#7f1d1d]/50 rounded-xl p-3">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
       </div>

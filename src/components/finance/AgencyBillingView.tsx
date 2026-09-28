@@ -93,7 +93,27 @@ export default function AgencyBillingView({ subTab, onSubTabChange }: AgencyBill
     const pipelineQuotes = quotes
       .filter((d) => d.status === 'draft' || d.status === 'sent')
       .reduce((s, d) => s + d.totalAmount, 0);
-    return { receivables, collected, opex, pipelineQuotes, openCount: openInvoices.length, paidCount: paid.length };
+
+    const todayMs = Date.now();
+    const aging = { current: 0, d30: 0, d60: 0, d90: 0 };
+    openInvoices.forEach((d) => {
+      const due = new Date(d.dueDate || d.issueDate).getTime();
+      const days = Math.floor((todayMs - due) / (1000 * 60 * 60 * 24));
+      if (days <= 0) aging.current += d.totalAmount;
+      else if (days <= 30) aging.d30 += d.totalAmount;
+      else if (days <= 60) aging.d60 += d.totalAmount;
+      else aging.d90 += d.totalAmount;
+    });
+
+    return {
+      receivables,
+      collected,
+      opex,
+      pipelineQuotes,
+      openCount: openInvoices.length,
+      paidCount: paid.length,
+      aging,
+    };
   }, [invoices, payments, expenses, quotes]);
 
   const filterDocs = (list: CommercialDocument[]) => {
@@ -384,6 +404,27 @@ export default function AgencyBillingView({ subTab, onSubTabChange }: AgencyBill
               </div>
             ))}
           </div>
+
+          <div className="rounded-2xl bg-[#121815] border border-[#1a2720] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-white">Receivables aging (PKR)</h3>
+              <span className="text-[10px] text-[#6b7280]">Open invoices by days past due</span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {[
+                { label: 'Current', value: metrics.aging.current, tone: 'text-[#10b981]' },
+                { label: '1–30 days', value: metrics.aging.d30, tone: 'text-[#fbbf24]' },
+                { label: '31–60 days', value: metrics.aging.d60, tone: 'text-[#f59e0b]' },
+                { label: '90+ days', value: metrics.aging.d90, tone: 'text-[#f87171]' },
+              ].map((b) => (
+                <div key={b.label} className="rounded-xl bg-[#0b1210] border border-[#1e2a22] p-3">
+                  <p className="text-[10px] text-[#6b7280] font-semibold uppercase tracking-wider">{b.label}</p>
+                  <p className={`text-sm font-black mt-1 ${b.tone}`}>{formatPKR(b.value, true)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-2xl bg-[#121815] border border-[#1a2720] p-4">
               <div className="flex items-center justify-between mb-3">

@@ -16,6 +16,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { LeadCard } from '@/data/crmData';
+import CallDialerPanel from '@/components/crm/CallDialerPanel';
 
 interface LeadDetailModalProps {
   lead: LeadCard | null;
@@ -26,6 +27,8 @@ interface LeadDetailModalProps {
   onCreateQuote?: (lead: LeadCard) => void;
   onCreateProject?: (lead: LeadCard) => void;
   onCreateDoc?: (lead: LeadCard) => void;
+  queue?: LeadCard[];
+  onOpenLead?: (lead: LeadCard) => void;
 }
 
 export default function LeadDetailModal({
@@ -37,6 +40,8 @@ export default function LeadDetailModal({
   onCreateQuote,
   onCreateProject,
   onCreateDoc,
+  queue = [],
+  onOpenLead,
 }: LeadDetailModalProps) {
   if (!lead) return null;
 
@@ -44,7 +49,7 @@ export default function LeadDetailModal({
     <SideDrawer
       isOpen={isOpen}
       onClose={onClose}
-      width="max-w-xl"
+      width="max-w-2xl"
       title={
         <div className="flex items-center gap-3">
           <div
@@ -246,22 +251,7 @@ export default function LeadDetailModal({
             Convert this lead into a client account, then spin up a project and quote/invoice from
             the same record chain. Deals still live in the Sales Pipeline tab.
           </p>
-          <div className="space-y-2">
-            <div className="p-3 rounded-xl bg-[#141d18] border border-[#1e2a22] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-[#b8ff00]" />
-                <span className="text-white font-medium">Discovery call logged</span>
-              </div>
-              <span className="text-[10px] font-mono text-[#6b7280]">Recent</span>
-            </div>
-            <div className="p-3 rounded-xl bg-[#141d18] border border-[#1e2a22] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Clock className="w-4 h-4 text-[#38bdf8]" />
-                <span className="text-white font-medium">Ready for quote / client conversion</span>
-              </div>
-              <span className="text-[10px] font-mono text-[#6b7280]">Now</span>
-            </div>
-          </div>
+          <CallDialerPanel lead={lead} queue={queue} onOpenLead={onOpenLead} />
         </div>
       </div>
     </SideDrawer>

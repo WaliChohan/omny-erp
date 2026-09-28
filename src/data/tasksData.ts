@@ -3,6 +3,8 @@ import { TEAM_MEMBERS, TeamMember } from '@/data/projectsData';
 export type TaskPriority = 'High' | 'Medium' | 'Low';
 export type TaskCategory = 'Finance' | 'Sales' | 'Dev' | 'Operations' | 'General';
 
+export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
+
 export interface AgencyTask {
   id: string;
   title: string;
@@ -11,6 +13,7 @@ export interface AgencyTask {
   priority: TaskPriority;
   dueDate: string;
   completed: boolean;
+  status?: TaskStatus;
   createdAt: string;
   assignee?: TeamMember;
   clientId?: string;
@@ -26,6 +29,7 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     priority: 'High',
     dueDate: '2026-09-29',
     completed: false,
+    status: 'in_progress',
     createdAt: '2026-09-26',
     assignee: TEAM_MEMBERS[0],
     clientId: 'cli-1',
@@ -39,6 +43,7 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     priority: 'High',
     dueDate: '2026-09-30',
     completed: false,
+    status: 'todo',
     createdAt: '2026-09-27',
     assignee: TEAM_MEMBERS[1],
     clientId: 'cli-2',
@@ -52,6 +57,7 @@ export const INITIAL_AGENCY_TASKS: AgencyTask[] = [
     priority: 'Medium',
     dueDate: '2026-10-01',
     completed: false,
+    status: 'review',
     createdAt: '2026-09-25',
     assignee: TEAM_MEMBERS[2],
     clientId: 'cli-3',

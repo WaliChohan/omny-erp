@@ -50,6 +50,24 @@ export const LEAD_FILTERS: LeadFilter[] = [
 
 export type LeadSource = 'LinkedIn' | 'Email' | 'Referral' | 'Cold Call' | 'Twitter' | 'Website' | 'Google Ads' | 'Partner';
 
+export type CallOutcome =
+  | 'connected'
+  | 'no_answer'
+  | 'voicemail'
+  | 'busy'
+  | 'wrong_number'
+  | 'callback';
+
+export interface LeadActivity {
+  id: string;
+  leadId: string;
+  type: 'note' | 'call' | 'status' | 'import' | 'email';
+  outcome?: CallOutcome;
+  content: string;
+  createdAt: string;
+  durationSec?: number;
+}
+
 export interface LeadCard {
   id: string;
   name: string;

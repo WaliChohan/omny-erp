@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Plus,
@@ -30,7 +30,7 @@ import DocumentLayout from './templates/DocumentLayout';
 import { exportDocumentToPDF } from './pdf/pdfExporter';
 
 export default function DocumentManagerView() {
-  const { clients, projects, navigate } = useAgency();
+  const { clients, projects, navigate, consumeFocus } = useAgency();
   const {
     documents,
     activeDocument,
@@ -46,6 +46,13 @@ export default function DocumentManagerView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | 'all'>('all');
   const [clientFilter, setClientFilter] = useState<string>('all');
+
+  useEffect(() => {
+    const id = consumeFocus('document');
+    if (!id) return;
+    const doc = documents.find((d) => d.id === id);
+    if (doc) setActiveDocument(doc);
+  }, [consumeFocus, documents, setActiveDocument]);
   const [projectFilter, setProjectFilter] = useState<string>('all');
 
   // Modals

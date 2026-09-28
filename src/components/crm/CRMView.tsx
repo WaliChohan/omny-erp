@@ -180,6 +180,8 @@ export default function CRMView() {
     createProjectForClient,
     consumeFocus,
     clients,
+    leads: agencyLeads,
+    importLeads,
   } = useAgency();
   const [crmSubTab, setCrmSubTab] = useState<'workspace' | 'pipeline' | 'database'>('workspace');
   const [activeFilter, setActiveFilter] = useState<LeadFilter>('All');
@@ -187,7 +189,7 @@ export default function CRMView() {
   const [activeDetailLead, setActiveDetailLead] = useState<LeadCard | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedLeadForDeal, setSelectedLeadForDeal] = useState<LeadCard | null>(null);
-  const [leadsList, setLeadsList] = useState<LeadCard[]>(CRM_LEADS);
+  const leadsList = agencyLeads;
 
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>(
     Object.fromEntries(SCHEDULE_TOGGLES.map((t) => [t.id, t.active]))
@@ -202,7 +204,7 @@ export default function CRMView() {
     setToggleStates((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const handleBulkImport = (imported: LeadCard[]) => {
-    setLeadsList([...imported, ...leadsList]);
+    importLeads(imported);
   };
 
   useEffect(() => {
@@ -484,6 +486,11 @@ export default function CRMView() {
         lead={activeDetailLead}
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
+        queue={leadsList}
+        onOpenLead={(lead) => {
+          setActiveDetailLead(lead);
+          setIsDetailModalOpen(true);
+        }}
         onConvertToDeal={handleConvertToDeal}
         onConvertToClient={handleConvertToClient}
         onCreateQuote={handleCreateQuote}

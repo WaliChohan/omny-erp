@@ -1,31 +1,10 @@
 'use client';
 
+import { useAgency } from '@/context/AgencyContext';
+import type { AgencyTask, TaskStatus } from '@/data/tasksData';
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import {
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  FileText,
-  LayoutGrid,
-  Plus,
-  Trash2,
-  Users,
-  PenTool,
-  Check,
-  X,
-  Sparkles,
-  Link as LinkIcon,
-  Download,
-  AlertCircle,
-  TrendingUp,
-  Tag,
-  Kanban,
-  Edit2,
-  Layers,
-  RotateCcw,
-} from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle2, Clock, DollarSign, FileText, LayoutGrid, Plus, Trash2, Users, PenTool, Check, X, Sparkles, Link as LinkIcon, Download, AlertCircle, TrendingUp, Tag, Kanban, Edit2, Layers, RotateCcw, MessageSquare, FilePlus2, Receipt, ScrollText } from 'lucide-react';
 import {
   ProjectCardItem,
   ProjectTask,
@@ -35,6 +14,7 @@ import {
 } from '@/data/projectsData';
 import { COMMERCIAL_DOCUMENTS, CommercialDocument } from '@/data/financialData';
 import ProjectCalendarView from '@/components/projects/ProjectCalendarView';
+import ProjectChatPanel from '@/components/projects/ProjectChatPanel';
 import FolderCard from '@/components/common/FolderCard';
 import GooeyFolderTabs, { TabItem } from '@/components/ui/GooeyFolderTabs';
 
@@ -55,44 +35,72 @@ export default function ProjectDetailWorkspace({
 }: ProjectDetailWorkspaceProps) {
   const [project, setProject] = useState<ProjectCardItem>(initialProject);
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'team' | 'tasks' | 'timeline' | 'calendar' | 'docs' | 'whiteboard'
+    'overview' | 'team' | 'tasks' | 'timeline' | 'calendar' | 'docs' | 'chat' | 'whiteboard'
   >('overview');
 
-  // Tasks state inside project
-  const [tasks, setTasks] = useState<ProjectTask[]>(
-    project.tasks || [
-      {
-        id: 'pt-1',
+  const agency = useAgency();
+  const seededRef = useRef(false);
+  const {
+    getTasksForProject,
+    addTask,
+    updateTask,
+    deleteTask,
+    createDocument,
+    createHubDocument,
+    setActiveHubDocument,
+    navigate,
+    getDocsForProject,
+    clients,
+  } = agency;
+
+  // Agency-backed project tasks (ClickUp-style board data)
+  const tasks: AgencyTask[] = getTasksForProject(project.id);
+
+  // Seed once if project has no agency tasks yet
+  useEffect(() => {
+    if (seededRef.current) return;
+    if (getTasksForProject(project.id).length > 0) {
+      seededRef.current = true;
+      return;
+    }
+    const seed = project.tasks?.length
+      ? project.tasks
+      : [
+          {
+            id: 'seed',
+            title: 'Discovery & scope lock',
+            priority: 'High' as const,
+            dueDate: project.deadline,
+            completed: false,
+            status: 'todo' as const,
+            assignee: project.team[0] || TEAM_MEMBERS[0],
+          },
+          {
+            id: 'seed2',
+            title: 'Build milestone 1 deliverable',
+            priority: 'High' as const,
+            dueDate: project.deadline,
+            completed: false,
+            status: 'in_progress' as const,
+            assignee: project.team[1] || TEAM_MEMBERS[1] || TEAM_MEMBERS[0],
+          },
+        ];
+    seed.forEach((t) => {
+      addTask({
+        title: t.title,
+        description: (t as any).description,
+        category: 'Dev',
+        priority: t.priority,
+        dueDate: t.dueDate,
+        completed: t.completed,
+        status: (t as any).status || (t.completed ? 'done' : 'todo'),
+        assignee: t.assignee,
         projectId: project.id,
-        title: 'Architectural Blueprint & Database Design',
-        priority: 'High',
-        dueDate: project.deadline,
-        completed: true,
-        status: 'done',
-        assignee: project.team[0] || TEAM_MEMBERS[0],
-      },
-      {
-        id: 'pt-2',
-        projectId: project.id,
-        title: 'Develop core API gateway and security tokens',
-        priority: 'High',
-        dueDate: project.deadline,
-        completed: false,
-        status: 'in_progress',
-        assignee: project.team[1] || TEAM_MEMBERS[1],
-      },
-      {
-        id: 'pt-3',
-        projectId: project.id,
-        title: 'Design responsive UI components & theme tokens',
-        priority: 'Medium',
-        dueDate: project.deadline,
-        completed: false,
-        status: 'todo',
-        assignee: project.team[2] || TEAM_MEMBERS[2],
-      },
-    ]
-  );
+        clientId: project.clientId,
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
 
   // New task modal
   const [isAddingTask, setIsAddingTask] = useState(false);
@@ -125,7 +133,7 @@ export default function ProjectDetailWorkspace({
 
   // Task filter inside project
   const [taskFilterAssignee, setTaskFilterAssignee] = useState<string>('all');
-  const [taskFilterStatus, setTaskFilterStatus] = useState<string>('all');
+  const [taskFilterStatus, setTaskFilterStatus] = useState<'all' | 'pending' | 'completed' | TaskStatus>('all');
 
   // Compute progress
   const completedTasksCount = tasks.filter((t) => t.completed).length;
@@ -140,12 +148,18 @@ export default function ProjectDetailWorkspace({
     return diff > 0 ? diff : 0;
   }, [project.deadline]);
 
-  // Linked Docs
+  // Linked Docs (agency commercial docs + optional legacy links)
   const linkedCommercialDocs = useMemo(() => {
-    return COMMERCIAL_DOCUMENTS.filter(
-      (d) => d.projectId === project.id || (project.linkedDocIds && project.linkedDocIds.includes(d.id))
+    const fromAgency = getDocsForProject(project.id);
+    const legacy = COMMERCIAL_DOCUMENTS.filter(
+      (d) =>
+        d.projectId === project.id ||
+        (project.linkedDocIds && project.linkedDocIds.includes(d.id))
     );
-  }, [project]);
+    const map = new Map<string, CommercialDocument>();
+    [...legacy, ...fromAgency].forEach((d) => map.set(d.id, d));
+    return Array.from(map.values());
+  }, [project, getDocsForProject]);
 
   const linkedDriveFiles = useMemo(() => {
     return GOOGLE_DRIVE_FILES.filter(
@@ -155,17 +169,20 @@ export default function ProjectDetailWorkspace({
 
   // Handle task completion toggle
   const toggleTaskCompleted = (id: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const nextCompleted = !t.completed;
-        return {
-          ...t,
-          completed: nextCompleted,
-          status: nextCompleted ? 'done' : 'in_progress',
-        };
-      })
-    );
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return;
+    const completed = !t.completed;
+    updateTask({
+      ...t,
+      completed,
+      status: completed ? 'done' : t.status === 'done' ? 'todo' : t.status,
+    });
+  };
+
+  const setTaskStatus = (id: string, status: TaskStatus) => {
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return;
+    updateTask({ ...t, status, completed: status === 'done' });
   };
 
   // Handle add task
@@ -176,20 +193,87 @@ export default function ProjectDetailWorkspace({
     const assignee =
       TEAM_MEMBERS.find((m) => m.id === newTaskAssigneeId) || project.team[0] || TEAM_MEMBERS[0];
 
-    const newTask: ProjectTask = {
-      id: `pt-${Date.now()}`,
-      projectId: project.id,
-      title: newTaskTitle,
+    addTask({
+      title: newTaskTitle.trim(),
+      category: 'Dev',
       priority: newTaskPriority,
-      dueDate: newTaskDueDate,
+      dueDate: newTaskDueDate || project.deadline,
       completed: false,
       status: 'todo',
       assignee,
-    };
-
-    setTasks([...tasks, newTask]);
+      projectId: project.id,
+      clientId: project.clientId,
+    });
     setIsAddingTask(false);
     setNewTaskTitle('');
+  };
+
+  const createProjectCommercialDoc = (docType: 'sow' | 'quotation' | 'invoice') => {
+    const client = project.clientId ? clients.find((c) => c.id === project.clientId) : undefined;
+    const commercial = createDocument({
+      docType,
+      clientId: project.clientId,
+      projectId: project.id,
+      title:
+        docType === 'sow'
+          ? `SOW — ${project.title}`
+          : docType === 'quotation'
+            ? `Quote — ${project.title}`
+            : `Invoice — ${project.title}`,
+      amount: project.budget,
+      description:
+        docType === 'sow'
+          ? `Statement of Work for ${project.title}`
+          : docType === 'quotation'
+            ? `Quotation for ${project.title}`
+            : `Milestone invoice for ${project.title}`,
+    });
+
+    const hubType = docType === 'sow' ? 'proposal' : docType === 'quotation' ? 'quotation' : 'invoice';
+    const hub = createHubDocument({
+      docNumber: commercial.docNumber,
+      type: hubType,
+      subtype: 'standard',
+      status: 'draft',
+      clientId: project.clientId,
+      projectId: project.id,
+      clientName: client?.name || project.client || 'Client',
+      clientCompany: client?.company || project.client || 'Client',
+      clientEmail: client?.email || '',
+      clientPhone: client?.phone || '',
+      clientAddress: client?.city || '',
+      issueDate: new Date().toISOString().slice(0, 10),
+      dueDate: project.deadline,
+      currency: 'PKR',
+      subtotal: project.budget,
+      taxRate: 0,
+      taxAmount: 0,
+      discountAmount: 0,
+      grandTotal: project.budget,
+      notes: `Generated from project workspace: ${project.title}`,
+      terms: 'Net 15. Payment via bank transfer to OMNYSYNC.',
+      proposalHeadline: docType === 'sow' ? `Statement of Work — ${project.title}` : undefined,
+      proposalSubhead:
+        docType === 'sow'
+          ? 'Scope, deliverables, timeline, and commercial terms for this engagement.'
+          : undefined,
+      items: [
+        {
+          id: 'item-1',
+          itemType: 'service',
+          skuOrCode: docType.toUpperCase(),
+          description: commercial.items[0]?.description || project.title,
+          quantity: 1,
+          unitName: 'project',
+          unitPrice: project.budget,
+          taxRate: 0,
+          discount: 0,
+          totalPrice: project.budget,
+        },
+      ],
+    });
+    setActiveHubDocument(hub);
+    navigate({ tab: 'documents', focus: { kind: 'document', id: hub.id } });
   };
 
   // Handle add member to project
@@ -215,7 +299,7 @@ export default function ProjectDetailWorkspace({
     setIsLinkingDoc(false);
   };
 
-  // Whiteboard Canvas Drawing Logic
+  // Whiteboard Canvas Drawing Logic (persisted per project)
   useEffect(() => {
     if (activeTab !== 'whiteboard') return;
     const canvas = canvasRef.current;
@@ -223,10 +307,33 @@ export default function ProjectDetailWorkspace({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Fill dark background once
+    const key = `omnysync_wb_${project.id}`;
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+        };
+        img.src = saved;
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
     ctx.fillStyle = '#101613';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, [activeTab]);
+  }, [activeTab, project.id]);
+
+  const persistWhiteboard = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      localStorage.setItem(`omnysync_wb_${project.id}`, canvas.toDataURL('image/png'));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -261,6 +368,7 @@ export default function ProjectDetailWorkspace({
 
   const stopDrawing = () => {
     setIsDrawing(false);
+    persistWhiteboard();
   };
 
   const clearWhiteboard = () => {
@@ -270,6 +378,11 @@ export default function ProjectDetailWorkspace({
     if (!ctx) return;
     ctx.fillStyle = '#101613';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    try {
+      localStorage.removeItem(`omnysync_wb_${project.id}`);
+    } catch {
+      /* ignore */
+    }
   };
 
   const addStickyNote = () => {
@@ -291,7 +404,7 @@ export default function ProjectDetailWorkspace({
 
   // Filtered tasks
   const filteredTasks = tasks.filter((t) => {
-    if (taskFilterAssignee !== 'all' && t.assignee.id !== taskFilterAssignee) return false;
+    if (taskFilterAssignee !== 'all' && t.assignee?.id !== taskFilterAssignee) return false;
     if (taskFilterStatus !== 'all') {
       if (taskFilterStatus === 'completed' && !t.completed) return false;
       if (taskFilterStatus === 'pending' && t.completed) return false;
@@ -306,6 +419,7 @@ export default function ProjectDetailWorkspace({
     { id: 'timeline', label: 'Milestone Timeline', icon: Clock },
     { id: 'calendar', label: 'Separate Calendar View', icon: Calendar },
     { id: 'docs', label: 'Project Docs', icon: FileText, badge: linkedCommercialDocs.length + linkedDriveFiles.length },
+    { id: 'chat', label: 'Project Chat', icon: MessageSquare },
     { id: 'whiteboard', label: 'Project Whiteboard', icon: PenTool },
   ];
 
@@ -521,12 +635,12 @@ export default function ProjectDetailWorkspace({
 
                   <div className="flex items-center gap-2">
                     <div
-                      className={`w-6 h-6 rounded-full ${task.assignee.color} text-white text-[10px] font-bold flex items-center justify-center`}
-                      title={task.assignee.name}
+                      className={`w-6 h-6 rounded-full ${task.assignee?.color || 'bg-[#2dd4bf]'} text-white text-[10px] font-bold flex items-center justify-center`}
+                      title={task.assignee?.name || 'Unassigned'}
                     >
-                      {task.assignee.avatar}
+                      {task.assignee?.avatar || '?'}
                     </div>
-                    <span className="text-[10px] text-[#9ca3af] hidden sm:inline">{task.assignee.name}</span>
+                    <span className="text-[10px] text-[#9ca3af] hidden sm:inline">{task.assignee?.name || 'Unassigned'}</span>
                   </div>
                 </div>
               ))}
@@ -574,7 +688,7 @@ export default function ProjectDetailWorkspace({
                   <div className="mt-3 pt-2 border-t border-[#18241d] flex items-center justify-between text-[11px] text-[#9ca3af]">
                     <span>Assigned Tasks:</span>
                     <strong className="text-white font-mono">
-                      {tasks.filter((t) => t.assignee.id === member.id).length}
+                      {tasks.filter((t) => t.assignee?.id === member.id).length}
                     </strong>
                   </div>
                 </div>
@@ -672,7 +786,7 @@ export default function ProjectDetailWorkspace({
             </div>
 
             <div className="flex items-center gap-1.5 bg-[#141e18] p-1 rounded-xl border border-[#203026]">
-              {(['all', 'pending', 'completed'] as const).map((st) => (
+              {(['all', 'todo', 'in_progress', 'review', 'done', 'pending', 'completed'] as const).map((st) => (
                 <button
                   key={st}
                   onClick={() => setTaskFilterStatus(st)}
@@ -737,18 +851,37 @@ export default function ProjectDetailWorkspace({
                     </div>
                   </div>
 
+                  <select
+                    value={task.status || (task.completed ? 'done' : 'todo')}
+                    onChange={(e) => setTaskStatus(task.id, e.target.value as TaskStatus)}
+                    className="bg-[#17221c] border border-[#203227] text-[10px] font-bold text-white rounded-lg px-2 py-1.5"
+                  >
+                    <option value="todo">To do</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="review">Review</option>
+                    <option value="done">Done</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => deleteTask(task.id)}
+                    className="p-1.5 rounded-lg text-[#6b7280] hover:text-[#f87171] hover:bg-[#2a1212]"
+                    title="Delete task"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+
                   {/* Assignee Badge Pill */}
                   <div className="flex items-center gap-2 bg-[#17221c] border border-[#203227] px-3 py-1.5 rounded-xl">
                     <div
-                      className={`w-6 h-6 rounded-full ${task.assignee.color} text-white font-bold text-[10px] flex items-center justify-center`}
+                      className={`w-6 h-6 rounded-full ${task.assignee?.color || 'bg-[#2dd4bf]'} text-white font-bold text-[10px] flex items-center justify-center`}
                     >
-                      {task.assignee.avatar}
+                      {task.assignee?.avatar || '?'}
                     </div>
                     <div className="text-left">
                       <span className="text-[11px] font-bold text-white block leading-tight">
-                        {task.assignee.name}
+                        {task.assignee?.name || 'Unassigned'}
                       </span>
-                      <span className="text-[9px] text-[#9ca3af] block">{task.assignee.role}</span>
+                      <span className="text-[9px] text-[#9ca3af] block">{task.assignee?.role || ''}</span>
                     </div>
                   </div>
                 </div>
@@ -900,6 +1033,28 @@ export default function ProjectDetailWorkspace({
               </p>
             </div>
 
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => createProjectCommercialDoc('sow')}
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold flex items-center gap-1.5 hover:border-[#2dd4bf]/40"
+              >
+                <ScrollText className="w-3.5 h-3.5 text-[#a855f7]" /> New SOW
+              </button>
+              <button
+                type="button"
+                onClick={() => createProjectCommercialDoc('quotation')}
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold flex items-center gap-1.5 hover:border-[#2dd4bf]/40"
+              >
+                <FilePlus2 className="w-3.5 h-3.5 text-[#38bdf8]" /> New quote
+              </button>
+              <button
+                type="button"
+                onClick={() => createProjectCommercialDoc('invoice')}
+                className="px-3 py-2 rounded-xl bg-[#141d18] border border-[#1e2a22] text-[#e5e7eb] text-xs font-bold flex items-center gap-1.5 hover:border-[#2dd4bf]/40"
+              >
+                <Receipt className="w-3.5 h-3.5 text-[#fbbf24]" /> New invoice
+              </button>
             <button
               onClick={() => setIsLinkingDoc(true)}
               className="px-4 py-2 rounded-xl bg-[#2dd4bf] hover:bg-[#26b8a5] text-[#052e24] text-xs font-black transition-all shadow-md shadow-[#2dd4bf]/20 flex items-center gap-1.5"
@@ -907,6 +1062,7 @@ export default function ProjectDetailWorkspace({
               <LinkIcon className="w-3.5 h-3.5 stroke-[3]" />
               <span>Link Existing Document</span>
             </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1018,7 +1174,20 @@ export default function ProjectDetailWorkspace({
         </div>
       )}
 
-      {/* ── TAB 7: DEDICATED PROJECT WHITEBOARD ────────────────────────────── */}
+      {/* ── TAB: PROJECT CHAT ─────────────────────────────────────────────── */}
+        {activeTab === 'chat' && (
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-base font-bold text-white tracking-tight">Project Chat</h2>
+              <p className="text-[11px] text-[#9ca3af] mt-0.5">
+                ClickUp-style ops thread scoped to this project (mock, persists locally).
+              </p>
+            </div>
+            <ProjectChatPanel projectId={project.id} projectTitle={project.title} />
+          </div>
+        )}
+
+        {/* ── TAB 7: DEDICATED PROJECT WHITEBOARD ────────────────────────────── */}
       {activeTab === 'whiteboard' && (
         <div className="bg-[#121915] border border-[#1e2d24] rounded-2xl p-5 space-y-4">
           {/* Whiteboard Controls */}

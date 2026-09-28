@@ -14,7 +14,7 @@ import {
   ClientStatus,
   ServiceLine,
 } from '@/data/clientsData';
-import { CRM_LEADS, LeadCard } from '@/data/crmData';
+import { CRM_LEADS, LeadCard, LeadActivity, CallOutcome } from '@/data/crmData';
 import { OMNYSYNC_PROJECTS, ProjectCardItem, TEAM_MEMBERS } from '@/data/projectsData';
 import {
   CommercialDocument,
@@ -116,6 +116,16 @@ interface AgencyContextType {
   updateProject: (project: ProjectCardItem) => void;
   addLead: (lead: LeadCard) => void;
   updateLead: (lead: LeadCard) => void;
+  importLeads: (leads: LeadCard[]) => void;
+  leadActivities: LeadActivity[];
+  addLeadActivity: (activity: Omit<LeadActivity, 'id' | 'createdAt'> & { createdAt?: string }) => LeadActivity;
+  getLeadActivities: (leadId: string) => LeadActivity[];
+  logCall: (input: {
+    leadId: string;
+    outcome: CallOutcome;
+    notes: string;
+    durationSec?: number;
+  }) => LeadActivity;
 
   getClient: (id: string) => AgencyClient | undefined;
   getProjectsForClient: (clientId: string) => ProjectCardItem[];
@@ -145,6 +155,7 @@ interface AgencyContextType {
   addTask: (task: Omit<AgencyTask, 'id' | 'createdAt' | 'completed'> & { completed?: boolean }) => AgencyTask;
   updateTask: (task: AgencyTask) => void;
   deleteTask: (id: string) => void;
+  getTasksForProject: (projectId: string) => AgencyTask[];
   toggleTask: (id: string) => void;
 
   portalClientId: string;
@@ -208,6 +219,24 @@ function docPrefix(type: DocumentType) {
 export function AgencyProvider({ children }: { children: React.ReactNode }) {
   const [clients, setClients] = useState<AgencyClient[]>(AGENCY_CLIENTS);
   const [leads, setLeads] = useState<LeadCard[]>(CRM_LEADS);
+  const [leadActivities, setLeadActivities] = useState<LeadActivity[]>([
+    {
+      id: 'act-seed-1',
+      leadId: 'lead-0',
+      type: 'note',
+      content: 'Inbound interest in booking portal + dispatch app.',
+      createdAt: '2026-09-26T10:00:00.000Z',
+    },
+    {
+      id: 'act-seed-2',
+      leadId: 'lead-0',
+      type: 'call',
+      outcome: 'connected',
+      content: 'Discovery call — scoped HVAC field workflows.',
+      createdAt: '2026-09-27T14:30:00.000Z',
+      durationSec: 720,
+    },
+  ]);
   const [projects, setProjects] = useState<ProjectCardItem[]>(OMNYSYNC_PROJECTS);
   const [documents, setDocuments] = useState<CommercialDocument[]>(COMMERCIAL_DOCUMENTS);
   const [payments, setPayments] = useState<AgencyPayment[]>(INITIAL_PAYMENTS);
@@ -229,6 +258,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(raw);
         if (parsed.clients?.length) setClients(parsed.clients);
         if (parsed.leads?.length) setLeads(parsed.leads);
+        if (parsed.leadActivities?.length) setLeadActivities(parsed.leadActivities);
         if (parsed.projects?.length) setProjects(parsed.projects);
         if (parsed.documents?.length) setDocuments(parsed.documents);
         if (parsed.payments?.length) setPayments(parsed.payments);
@@ -252,6 +282,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
         JSON.stringify({
           clients,
           leads,
+          leadActivities,
           projects,
           documents,
           payments,
@@ -265,7 +296,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
-  }, [clients, leads, projects, documents, payments, expenses, hubDocuments, tasks, tickets, portalClientId, hydrated]);
+  }, [clients, leads, leadActivities, projects, documents, payments, expenses, hubDocuments, tasks, tickets, portalClientId, hydrated]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -508,7 +539,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
       });
       return doc;
     },
-    [clients, leads, projects, documents.length, navigate, showToast]
+    [ clients, leads, leadActivities, projects, documents.length, navigate, showToast]
   );
 
   const convertQuoteToInvoice = useCallback(
@@ -744,11 +775,13 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
 
   const addTask = useCallback(
     (input: Omit<AgencyTask, 'id' | 'createdAt' | 'completed'> & { completed?: boolean }) => {
+      const completed = input.completed ?? false;
       const task: AgencyTask = {
         ...input,
         id: `task-${Date.now()}`,
         createdAt: today(),
-        completed: input.completed ?? false,
+        completed,
+        status: input.status ?? (completed ? 'done' : 'todo'),
       };
       setTasks((prev) => [task, ...prev]);
       showToast('Task created');
@@ -766,7 +799,13 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTask = useCallback((id: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const completed = !t.completed;
+        return { ...t, completed, status: completed ? 'done' : t.status === 'done' ? 'todo' : t.status };
+      })
+    );
   }, []);
 
   const addTicket = useCallback(
@@ -994,6 +1033,82 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? lead : l)));
   }, []);
 
+  const importLeads = useCallback((incoming: LeadCard[]) => {
+    if (!incoming.length) return;
+    setLeads((prev) => {
+      const emails = new Set(prev.map((l) => (l.email || '').toLowerCase()).filter(Boolean));
+      const phones = new Set(prev.map((l) => (l.phone || '').replace(/\D/g, '')).filter(Boolean));
+      const next = [...prev];
+      for (const lead of incoming) {
+        const email = (lead.email || '').toLowerCase();
+        const phone = (lead.phone || '').replace(/\D/g, '');
+        if (email && emails.has(email)) continue;
+        if (phone && phones.has(phone)) continue;
+        next.push(lead);
+        if (email) emails.add(email);
+        if (phone) phones.add(phone);
+      }
+      return next;
+    });
+    const stamp = new Date().toISOString();
+    setLeadActivities((prev) => [
+      {
+        id: `act-import-${Date.now()}`,
+        leadId: incoming[0]?.id || 'import',
+        type: 'import',
+        content: `Imported ${incoming.length} lead(s) via bulk CSV/TSV.`,
+        createdAt: stamp,
+      },
+      ...prev,
+    ]);
+    showToast(`Imported ${incoming.length} lead(s)`);
+  }, [showToast]);
+
+  const addLeadActivity = useCallback(
+    (activity: Omit<LeadActivity, 'id' | 'createdAt'> & { createdAt?: string }) => {
+      const row: LeadActivity = {
+        ...activity,
+        id: `act-${Date.now()}-${Math.floor(Math.random() * 999)}`,
+        createdAt: activity.createdAt || new Date().toISOString(),
+      };
+      setLeadActivities((prev) => [row, ...prev]);
+      return row;
+    },
+    []
+  );
+
+  const getLeadActivities = useCallback(
+    (leadId: string) => leadActivities.filter((a) => a.leadId === leadId),
+    [leadActivities]
+  );
+
+  const logCall = useCallback(
+    (input: { leadId: string; outcome: CallOutcome; notes: string; durationSec?: number }) => {
+      const row = addLeadActivity({
+        leadId: input.leadId,
+        type: 'call',
+        outcome: input.outcome,
+        content: input.notes || `Call outcome: ${input.outcome}`,
+        durationSec: input.durationSec,
+      });
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === input.leadId && (!l.status || l.status === 'New')
+            ? { ...l, status: 'Contacted' }
+            : l
+        )
+      );
+      showToast(`Call logged — ${input.outcome.replace('_', ' ')}`);
+      return row;
+    },
+    [addLeadActivity, showToast]
+  );
+
+  const getTasksForProject = useCallback(
+    (projectId: string) => tasks.filter((t) => t.projectId === projectId),
+    [tasks]
+  );
+
   const value = useMemo<AgencyContextType>(
     () => ({
       clients,
@@ -1020,6 +1135,11 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
       updateProject,
       addLead,
       updateLead,
+      importLeads,
+      leadActivities,
+      addLeadActivity,
+      getLeadActivities,
+      logCall,
       getClient,
       getProjectsForClient,
       getDocsForClient,
@@ -1041,6 +1161,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
       updateTask,
       deleteTask,
       toggleTask,
+      getTasksForProject,
       portalClientId,
       setPortalClientId,
       tickets,
