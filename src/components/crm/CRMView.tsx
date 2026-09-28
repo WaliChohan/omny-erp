@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAgency } from '@/context/AgencyContext';
 import { ArrowUpRight, Plus, ChevronDown, LayoutGrid, GitBranch, Database, Upload } from 'lucide-react';
 import SalesPipelineView from '@/components/crm/SalesPipelineView';
 import LeadsDatabaseView from '@/components/crm/LeadsDatabaseView';
@@ -173,6 +174,13 @@ function LeadCardItem({
 // ─── Main CRM View ───────────────────────────────────────────────────────────
 
 export default function CRMView() {
+  const {
+    convertLeadToClient,
+    createDocument,
+    createProjectForClient,
+    consumeFocus,
+    clients,
+  } = useAgency();
   const [crmSubTab, setCrmSubTab] = useState<'workspace' | 'pipeline' | 'database'>('workspace');
   const [activeFilter, setActiveFilter] = useState<LeadFilter>('All');
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -197,9 +205,49 @@ export default function CRMView() {
     setLeadsList([...imported, ...leadsList]);
   };
 
+  useEffect(() => {
+    const id = consumeFocus('lead');
+    if (!id) return;
+    const lead = leadsList.find((l) => l.id === id) || CRM_LEADS.find((l) => l.id === id);
+    if (lead) {
+      setActiveDetailLead(lead);
+      setIsDetailModalOpen(true);
+      setCrmSubTab('workspace');
+    }
+  }, [consumeFocus, leadsList]);
+
   const handleConvertToDeal = (lead: LeadCard) => {
     setSelectedLeadForDeal(lead);
     setCrmSubTab('pipeline');
+  };
+
+  const handleConvertToClient = (lead: LeadCard) => {
+    convertLeadToClient(lead.id);
+  };
+
+  const handleCreateQuote = (lead: LeadCard) => {
+    let client = clients.find((c) => c.leadId === lead.id || c.email === lead.email);
+    if (!client) client = convertLeadToClient(lead.id) || undefined;
+    createDocument({
+      docType: 'quotation',
+      clientId: client?.id,
+      leadId: lead.id,
+      title: `Quote — ${lead.company || lead.name}`,
+      amount: lead.estimatedValue || 500000,
+      description: `Proposal for ${lead.company || lead.name}`,
+    });
+  };
+
+  const handleCreateProject = (lead: LeadCard) => {
+    let client = clients.find((c) => c.leadId === lead.id || c.email === lead.email);
+    if (!client) client = convertLeadToClient(lead.id) || undefined;
+    if (client) {
+      createProjectForClient(client.id, {
+        title: `${client.company} — Engagement`,
+        category: 'Website',
+        budget: lead.estimatedValue || 500000,
+      });
+    }
   };
 
   return (
@@ -437,6 +485,17 @@ export default function CRMView() {
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         onConvertToDeal={handleConvertToDeal}
+        onConvertToClient={handleConvertToClient}
+        onCreateQuote={handleCreateQuote}
+        onCreateProject={handleCreateProject}
+        onCreateDoc={(lead) =>
+          createDocument({
+            docType: 'sow',
+            leadId: lead.id,
+            title: `SOW — ${lead.company || lead.name}`,
+            amount: lead.estimatedValue || 500000,
+          })
+        }
       />
     </div>
   );

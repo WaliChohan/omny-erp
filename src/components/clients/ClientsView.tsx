@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Plus,
@@ -13,15 +13,19 @@ import {
   Check,
   Filter,
   Users,
+  FileText,
+  Receipt,
+  ExternalLink,
 } from 'lucide-react';
 import {
-  AGENCY_CLIENTS,
   CLIENT_STATUS_FILTERS,
   AgencyClient,
   ClientStatus,
   ServiceLine,
   formatClientPKR,
 } from '@/data/clientsData';
+import { useAgency } from '@/context/AgencyContext';
+import { formatPKR } from '@/data/financialData';
 
 const SERVICE_OPTIONS: ServiceLine[] = [
   'Website',
@@ -46,36 +50,28 @@ const emptyForm = {
 };
 
 export default function ClientsView() {
-  const [clients, setClients] = useState<AgencyClient[]>(AGENCY_CLIENTS);
+  const {
+    clients,
+    upsertClient,
+    updateClientStatus,
+    createProjectForClient,
+    createDocument,
+    getProjectsForClient,
+    getDocsForClient,
+    navigate,
+    consumeFocus,
+  } = useAgency();
+
   const [statusFilter, setStatusFilter] = useState<(typeof CLIENT_STATUS_FILTERS)[number]>('All');
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(AGENCY_CLIENTS[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(clients[0]?.id ?? null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('omnysync_agency_clients');
-      if (raw) {
-        const parsed = JSON.parse(raw) as AgencyClient[];
-        if (Array.isArray(parsed) && parsed.length) {
-          setClients(parsed);
-          setSelectedId(parsed[0].id);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('omnysync_agency_clients', JSON.stringify(clients));
-    } catch {
-      /* ignore */
-    }
-  }, [clients]);
+    const id = consumeFocus('client');
+    if (id) setSelectedId(id);
+  }, [consumeFocus]);
 
   const filtered = useMemo(() => {
     return clients.filter((c) => {
@@ -93,18 +89,18 @@ export default function ClientsView() {
   }, [clients, statusFilter, search]);
 
   const selected = clients.find((c) => c.id === selectedId) ?? filtered[0] ?? null;
+  const relatedProjects = selected ? getProjectsForClient(selected.id) : [];
+  const relatedDocs = selected ? getDocsForClient(selected.id) : [];
 
   const summary = useMemo(() => {
     const active = clients.filter((c) => c.status === 'Active').length;
-    const mrr = clients.reduce((sum, c) => sum + (c.status === 'Active' || c.status === 'Onboarding' ? c.mrr : 0), 0);
+    const mrr = clients.reduce(
+      (sum, c) => sum + (c.status === 'Active' || c.status === 'Onboarding' ? c.mrr : 0),
+      0
+    );
     const projects = clients.reduce((sum, c) => sum + c.openProjects, 0);
     return { total: clients.length, active, mrr, projects };
   }, [clients]);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2200);
-  };
 
   const statusBadge = (status: ClientStatus) => {
     const map: Record<ClientStatus, string> = {
@@ -130,35 +126,25 @@ export default function ClientsView() {
       services: form.services.length ? form.services : ['Website'],
       mrr: Number(form.mrr) || 0,
       lifetimeValue: Number(form.mrr) || 0,
-      openProjects: form.status === 'Onboarding' || form.status === 'Active' ? 1 : 0,
+      openProjects: form.status === 'Onboarding' || form.status === 'Active' ? 0 : 0,
       accountManager: form.accountManager.trim() || 'Sarah Connor',
       city: form.city.trim() || '—',
       joinedAt: new Date().toISOString().slice(0, 10),
       lastTouch: new Date().toISOString().slice(0, 10),
       notes: form.notes.trim() || undefined,
     };
-    setClients((prev) => [newClient, ...prev]);
+    upsertClient(newClient);
     setSelectedId(newClient.id);
     setIsCreating(false);
     setForm(emptyForm);
-    showToast(`Client ${newClient.company} added`);
-  };
-
-  const updateStatus = (id: string, status: ClientStatus) => {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? { ...c, status, lastTouch: new Date().toISOString().slice(0, 10), openProjects: status === 'Churned' ? 0 : c.openProjects }
-          : c
-      )
-    );
-    showToast(`Status → ${status}`);
   };
 
   const toggleService = (svc: ServiceLine) => {
     setForm((f) => ({
       ...f,
-      services: f.services.includes(svc) ? f.services.filter((s) => s !== svc) : [...f.services, svc],
+      services: f.services.includes(svc)
+        ? f.services.filter((s) => s !== svc)
+        : [...f.services, svc],
     }));
   };
 
@@ -168,7 +154,7 @@ export default function ClientsView() {
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight">Clients</h1>
           <p className="text-xs text-[#9ca3af] mt-0.5">
-            HVAC & home-services accounts — retainers, websites, software, and SEO.
+            Linked to CRM leads, projects, quotes, and invoices.
           </p>
         </div>
         <button
@@ -197,7 +183,9 @@ export default function ClientsView() {
                 <Icon className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold">{card.label}</p>
+                <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold">
+                  {card.label}
+                </p>
                 <p className="text-lg font-black text-white">{card.value}</p>
               </div>
             </div>
@@ -256,15 +244,24 @@ export default function ClientsView() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-white truncate">{c.company}</p>
-                      <p className="text-[11px] text-[#9ca3af] truncate">{c.name} · {c.industry}</p>
+                      <p className="text-[11px] text-[#9ca3af] truncate">
+                        {c.name} · {c.industry}
+                      </p>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${statusBadge(c.status)}`}>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${statusBadge(
+                        c.status
+                      )}`}
+                    >
                       {c.status}
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {c.services.slice(0, 3).map((s) => (
-                      <span key={s} className="px-1.5 py-0.5 rounded bg-[#0f1612] border border-[#223328] text-[9px] text-[#9ca3af]">
+                      <span
+                        key={s}
+                        className="px-1.5 py-0.5 rounded bg-[#0f1612] border border-[#223328] text-[9px] text-[#9ca3af]"
+                      >
                         {s}
                       </span>
                     ))}
@@ -275,13 +272,13 @@ export default function ClientsView() {
           </div>
         </div>
 
-        <div className="xl:col-span-7 rounded-2xl bg-[#121815] border border-[#1a2720] p-5">
+        <div className="xl:col-span-7 rounded-2xl bg-[#121815] border border-[#1a2720] p-5 space-y-5">
           {!selected ? (
             <div className="h-full flex items-center justify-center text-sm text-[#6b7280]">
               Select a client to view details.
             </div>
           ) : (
-            <div className="space-y-5">
+            <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl bg-[#18261e] border border-[#274032] flex items-center justify-center text-[#2dd4bf]">
@@ -289,59 +286,167 @@ export default function ClientsView() {
                   </div>
                   <div>
                     <h2 className="text-xl font-black text-white">{selected.company}</h2>
-                    <p className="text-xs text-[#9ca3af]">{selected.name} · AM {selected.accountManager}</p>
+                    <p className="text-xs text-[#9ca3af]">
+                      {selected.name} · AM {selected.accountManager}
+                    </p>
                   </div>
                 </div>
-                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusBadge(selected.status)}`}>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusBadge(
+                    selected.status
+                  )}`}
+                >
                   {selected.status}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="flex items-center gap-2 text-[#9ca3af]"><Mail className="w-3.5 h-3.5 text-[#2dd4bf]" />{selected.email}</div>
-                <div className="flex items-center gap-2 text-[#9ca3af]"><Phone className="w-3.5 h-3.5 text-[#2dd4bf]" />{selected.phone}</div>
-                <div className="flex items-center gap-2 text-[#9ca3af]"><MapPin className="w-3.5 h-3.5 text-[#2dd4bf]" />{selected.city}</div>
-                <div className="flex items-center gap-2 text-[#9ca3af]"><Briefcase className="w-3.5 h-3.5 text-[#2dd4bf]" />{selected.industry}</div>
+                <div className="flex items-center gap-2 text-[#9ca3af]">
+                  <Mail className="w-3.5 h-3.5 text-[#2dd4bf]" />
+                  {selected.email}
+                </div>
+                <div className="flex items-center gap-2 text-[#9ca3af]">
+                  <Phone className="w-3.5 h-3.5 text-[#2dd4bf]" />
+                  {selected.phone}
+                </div>
+                <div className="flex items-center gap-2 text-[#9ca3af]">
+                  <MapPin className="w-3.5 h-3.5 text-[#2dd4bf]" />
+                  {selected.city}
+                </div>
+                <div className="flex items-center gap-2 text-[#9ca3af]">
+                  <Briefcase className="w-3.5 h-3.5 text-[#2dd4bf]" />
+                  {selected.industry}
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-[#0f1612] border border-[#1e2d24] p-3">
                   <p className="text-[10px] text-[#6b7280] uppercase font-semibold">MRR</p>
-                  <p className="text-sm font-black text-white mt-1">{formatClientPKR(selected.mrr)}</p>
+                  <p className="text-sm font-black text-white mt-1">
+                    {formatClientPKR(selected.mrr)}
+                  </p>
                 </div>
                 <div className="rounded-xl bg-[#0f1612] border border-[#1e2d24] p-3">
                   <p className="text-[10px] text-[#6b7280] uppercase font-semibold">LTV</p>
-                  <p className="text-sm font-black text-white mt-1">{formatClientPKR(selected.lifetimeValue)}</p>
+                  <p className="text-sm font-black text-white mt-1">
+                    {formatClientPKR(selected.lifetimeValue)}
+                  </p>
                 </div>
                 <div className="rounded-xl bg-[#0f1612] border border-[#1e2d24] p-3">
                   <p className="text-[10px] text-[#6b7280] uppercase font-semibold">Projects</p>
-                  <p className="text-sm font-black text-white mt-1">{selected.openProjects}</p>
+                  <p className="text-sm font-black text-white mt-1">{relatedProjects.length}</p>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => createProjectForClient(selected.id)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#2dd4bf] text-[#052e24] text-[11px] font-bold"
+                >
+                  <Briefcase className="w-3.5 h-3.5" /> New project
+                </button>
+                <button
+                  onClick={() =>
+                    createDocument({
+                      docType: 'quotation',
+                      clientId: selected.id,
+                      title: `Quote — ${selected.company}`,
+                      amount: Math.max(selected.mrr * 3, 350000),
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#141e18] border border-[#223328] text-[11px] font-bold text-white"
+                >
+                  <FileText className="w-3.5 h-3.5 text-[#38bdf8]" /> Quote
+                </button>
+                <button
+                  onClick={() =>
+                    createDocument({
+                      docType: 'invoice',
+                      clientId: selected.id,
+                      title: `Invoice — ${selected.company}`,
+                      amount: Math.max(selected.mrr, 250000),
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#141e18] border border-[#223328] text-[11px] font-bold text-white"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-[#10b981]" /> Invoice
+                </button>
+                {selected.leadId && (
+                  <button
+                    onClick={() =>
+                      navigate({ tab: 'crm', focus: { kind: 'lead', id: selected.leadId! } })
+                    }
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#141e18] border border-[#223328] text-[11px] font-bold text-[#9ca3af]"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Source lead
+                  </button>
+                )}
               </div>
 
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold mb-2">Services</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {selected.services.map((s) => (
-                    <span key={s} className="px-2.5 py-1 rounded-lg bg-[#18261e] border border-[#274032] text-[11px] font-semibold text-[#2dd4bf]">
-                      {s}
-                    </span>
-                  ))}
-                </div>
+                <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold mb-2">
+                  Related projects
+                </p>
+                {relatedProjects.length === 0 ? (
+                  <p className="text-xs text-[#6b7280]">No projects yet.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {relatedProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() =>
+                          navigate({ tab: 'projects', focus: { kind: 'project', id: p.id } })
+                        }
+                        className="w-full flex items-center justify-between rounded-xl bg-[#0f1612] border border-[#1e2d24] px-3 py-2 text-left hover:border-[#2dd4bf]/40"
+                      >
+                        <span className="text-xs font-semibold text-white truncate">{p.title}</span>
+                        <span className="text-[10px] text-[#9ca3af]">{p.progressPercent}%</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {selected.notes && (
-                <div className="rounded-xl bg-[#0f1612] border border-[#1e2d24] p-3 text-xs text-[#9ca3af]">
-                  {selected.notes}
-                </div>
-              )}
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold mb-2">
+                  Billing docs
+                </p>
+                {relatedDocs.length === 0 ? (
+                  <p className="text-xs text-[#6b7280]">No quotes or invoices yet.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {relatedDocs.slice(0, 6).map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() =>
+                          navigate({
+                            tab: 'finance',
+                            financeSub: d.docType === 'invoice' ? 'invoices' : 'quotes',
+                            focus: { kind: 'document', id: d.id },
+                          })
+                        }
+                        className="w-full flex items-center justify-between rounded-xl bg-[#0f1612] border border-[#1e2d24] px-3 py-2 text-left hover:border-[#2dd4bf]/40"
+                      >
+                        <span className="text-xs font-semibold text-white truncate">
+                          {d.docNumber} · {d.docType}
+                        </span>
+                        <span className="text-[10px] text-[#9ca3af]">
+                          {formatPKR(d.totalAmount, true)} · {d.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <p className="w-full text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold">Update status</p>
+                <p className="w-full text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold">
+                  Update status
+                </p>
                 {(['Active', 'Onboarding', 'Paused', 'Churned'] as ClientStatus[]).map((s) => (
                   <button
                     key={s}
-                    onClick={() => updateStatus(selected.id, s)}
+                    onClick={() => updateClientStatus(selected.id, s)}
                     className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
                       selected.status === s
                         ? 'bg-[#2dd4bf] text-[#052e24] border-[#2dd4bf]'
@@ -352,11 +457,7 @@ export default function ClientsView() {
                   </button>
                 ))}
               </div>
-
-              <p className="text-[10px] text-[#4b5563]">
-                Joined {selected.joinedAt} · Last touch {selected.lastTouch}
-              </p>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -369,27 +470,33 @@ export default function ClientsView() {
           >
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-white">Add agency client</h3>
-              <button type="button" onClick={() => setIsCreating(false)} className="text-[#6b7280] hover:text-white">
+              <button
+                type="button"
+                onClick={() => setIsCreating(false)}
+                className="text-[#6b7280] hover:text-white"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[
-                ['name', 'Contact name', 'text'],
-                ['company', 'Company', 'text'],
-                ['email', 'Email', 'email'],
-                ['phone', 'Phone', 'text'],
-                ['industry', 'Industry', 'text'],
-                ['city', 'City', 'text'],
-                ['accountManager', 'Account manager', 'text'],
-                ['mrr', 'Monthly retainer (PKR)', 'number'],
-              ].map(([key, label, type]) => (
+              {(
+                [
+                  ['name', 'Contact name', 'text'],
+                  ['company', 'Company', 'text'],
+                  ['email', 'Email', 'email'],
+                  ['phone', 'Phone', 'text'],
+                  ['industry', 'Industry', 'text'],
+                  ['city', 'City', 'text'],
+                  ['accountManager', 'Account manager', 'text'],
+                  ['mrr', 'Monthly retainer (PKR)', 'number'],
+                ] as const
+              ).map(([key, label, type]) => (
                 <label key={key} className="text-[11px] text-[#9ca3af] space-y-1">
                   <span>{label}</span>
                   <input
                     type={type}
                     required={key === 'name' || key === 'company' || key === 'email'}
-                    value={(form as any)[key]}
+                    value={(form as Record<string, string | number | ServiceLine[] | ClientStatus>)[key] as string | number}
                     onChange={(e) =>
                       setForm((f) => ({
                         ...f,
@@ -401,18 +508,6 @@ export default function ClientsView() {
                 </label>
               ))}
             </div>
-            <label className="block text-[11px] text-[#9ca3af] space-y-1">
-              <span>Status</span>
-              <select
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as ClientStatus }))}
-                className="w-full bg-[#0f1612] border border-[#223328] rounded-lg px-3 py-2 text-xs text-white outline-none"
-              >
-                {(['Onboarding', 'Active', 'Paused', 'Churned'] as ClientStatus[]).map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </label>
             <div>
               <p className="text-[11px] text-[#9ca3af] mb-1.5">Services</p>
               <div className="flex flex-wrap gap-1.5">
@@ -432,30 +527,22 @@ export default function ClientsView() {
                 ))}
               </div>
             </div>
-            <label className="block text-[11px] text-[#9ca3af] space-y-1">
-              <span>Notes</span>
-              <textarea
-                value={form.notes}
-                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                rows={2}
-                className="w-full bg-[#0f1612] border border-[#223328] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-[#2dd4bf] resize-none"
-              />
-            </label>
             <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => setIsCreating(false)} className="px-3 py-2 rounded-lg text-xs text-[#9ca3af] hover:text-white">
+              <button
+                type="button"
+                onClick={() => setIsCreating(false)}
+                className="px-3 py-2 rounded-lg text-xs text-[#9ca3af] hover:text-white"
+              >
                 Cancel
               </button>
-              <button type="submit" className="px-4 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold">
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-[#2dd4bf] text-[#052e24] text-xs font-bold"
+              >
                 Save client
               </button>
             </div>
           </form>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-[#18261e] border border-[#2dd4bf]/40 text-xs font-semibold text-[#2dd4bf] shadow-xl">
-          {toast}
         </div>
       )}
     </div>

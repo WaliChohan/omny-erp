@@ -5,6 +5,7 @@ import { WhiteboardProvider } from '@/context/WhiteboardContext';
 import { ChatProvider } from '@/context/ChatContext';
 import { DocumentProvider } from '@/context/DocumentContext';
 import { FinanceProvider } from '@/context/FinanceContext';
+import { AgencyProvider } from '@/context/AgencyContext';
 import WhiteboardModal from '@/components/whiteboard/WhiteboardModal';
 
 const inter = Inter({
@@ -25,16 +26,18 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased dark`}>
       <body className="min-h-full bg-[#0b0f0d] text-[#f3f4f6] selection:bg-[#00e676]/20 selection:text-[#00e676]">
-        <FinanceProvider>
-          <DocumentProvider>
-            <ChatProvider>
-              <WhiteboardProvider>
-                {children}
-                <WhiteboardModal />
-              </WhiteboardProvider>
-            </ChatProvider>
-          </DocumentProvider>
-        </FinanceProvider>
+        <AgencyProvider>
+          <FinanceProvider>
+            <DocumentProvider>
+              <ChatProvider>
+                <WhiteboardProvider>
+                  {children}
+                  <WhiteboardModal />
+                </WhiteboardProvider>
+              </ChatProvider>
+            </DocumentProvider>
+          </FinanceProvider>
+        </AgencyProvider>
       </body>
     </html>
   );

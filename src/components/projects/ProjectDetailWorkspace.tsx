@@ -42,12 +42,16 @@ interface ProjectDetailWorkspaceProps {
   project: ProjectCardItem;
   onBack: () => void;
   onUpdateProject?: (updated: ProjectCardItem) => void;
+  onCreateInvoice?: () => void;
+  onOpenClient?: () => void;
 }
 
 export default function ProjectDetailWorkspace({
   project: initialProject,
   onBack,
   onUpdateProject,
+  onCreateInvoice,
+  onOpenClient,
 }: ProjectDetailWorkspaceProps) {
   const [project, setProject] = useState<ProjectCardItem>(initialProject);
   const [activeTab, setActiveTab] = useState<
@@ -307,6 +311,25 @@ export default function ProjectDetailWorkspace({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
+        {onOpenClient && (
+          <button
+            onClick={onOpenClient}
+            className="px-3 py-1.5 rounded-lg bg-[#141e18] border border-[#223328] text-[11px] font-bold text-[#9ca3af] hover:text-white"
+          >
+            Open client
+          </button>
+        )}
+        {onCreateInvoice && (
+          <button
+            onClick={onCreateInvoice}
+            className="px-3 py-1.5 rounded-lg bg-[#2dd4bf] text-[#052e24] text-[11px] font-bold"
+          >
+            Bill milestone
+          </button>
+        )}
+      </div>
+
       {/* ── Top Navigation Bar ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <button

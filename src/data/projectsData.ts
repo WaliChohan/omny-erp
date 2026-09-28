@@ -36,6 +36,7 @@ export interface ProjectCardItem {
   team: TeamMember[];
   tasks?: ProjectTask[];
   linkedDocIds?: string[];
+  clientId?: string;
 }
 
 export interface TodayTaskItem {
@@ -133,6 +134,7 @@ export const OMNYSYNC_PROJECTS: ProjectCardItem[] = [
     title: 'CoolAir Pros — Booking Portal',
     category: 'Custom Software · HVAC',
     client: 'CoolAir Pros',
+    clientId: 'cli-1',
     description: 'Customer booking portal, technician dispatch board, and Google Business SEO integrations for an HVAC franchise.',
     deadline: '2025-05-15',
     budget: 68000,
@@ -182,6 +184,7 @@ export const OMNYSYNC_PROJECTS: ProjectCardItem[] = [
     title: 'ComfortZone — Field App',
     category: 'Mobile App · HVAC',
     client: 'ComfortZone HVAC',
+    clientId: 'cli-2',
     description: 'Next-gen biometric mobile banking application with instant peer-to-peer settlements and card controls.',
     deadline: '2025-06-30',
     budget: 45000,

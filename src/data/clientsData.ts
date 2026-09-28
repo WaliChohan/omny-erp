@@ -20,6 +20,8 @@ export interface AgencyClient {
   joinedAt: string;
   lastTouch: string;
   notes?: string;
+  leadId?: string;
+  contactIds?: string[];
 }
 
 export const CLIENT_STATUS_FILTERS: Array<'All' | ClientStatus> = [
@@ -48,6 +50,7 @@ export const AGENCY_CLIENTS: AgencyClient[] = [
     joinedAt: '2024-11-12',
     lastTouch: '2026-09-26',
     notes: 'Booking portal + Google Business SEO focus.',
+    leadId: 'lead-0',
   },
   {
     id: 'cli-2',
@@ -65,6 +68,7 @@ export const AGENCY_CLIENTS: AgencyClient[] = [
     city: 'Scottsdale, AZ',
     joinedAt: '2025-02-03',
     lastTouch: '2026-09-27',
+    leadId: 'lead-1',
   },
   {
     id: 'cli-3',

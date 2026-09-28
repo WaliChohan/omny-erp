@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAgency } from '@/context/AgencyContext';
 import {
   Plus,
   Search,
@@ -19,7 +20,6 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 import {
-  OMNYSYNC_PROJECTS,
   TODAY_TASKS,
   CALENDAR_GROUPS,
   GOOGLE_DRIVE_FILES,
@@ -35,8 +35,26 @@ interface ProjectsHubViewProps {
 }
 
 export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubViewProps) {
-  const [projects, setProjects] = useState<ProjectCardItem[]>(OMNYSYNC_PROJECTS);
+  const {
+    projects: agencyProjects,
+    updateProject,
+    createDocument,
+    consumeFocus,
+    navigate,
+  } = useAgency();
+  const [projects, setProjects] = useState<ProjectCardItem[]>(agencyProjects);
   const [selectedProject, setSelectedProject] = useState<ProjectCardItem | null>(null);
+
+  useEffect(() => {
+    setProjects(agencyProjects);
+  }, [agencyProjects]);
+
+  useEffect(() => {
+    const id = consumeFocus('project');
+    if (!id) return;
+    const found = agencyProjects.find((p) => p.id === id) || projects.find((p) => p.id === id);
+    if (found) setSelectedProject(found);
+  }, [consumeFocus, agencyProjects, projects]);
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [activeMainView, setActiveMainView] = useState<'hub' | 'calendar'>('hub');
 
@@ -58,13 +76,27 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
   };
 
   const handleProjectCreated = (newProject: ProjectCardItem) => {
-    setProjects([newProject, ...projects]);
-    setSelectedProject(newProject);
+    const withClient = { ...newProject, clientId: newProject.clientId };
+    updateProject(withClient);
+    setProjects([withClient, ...projects.filter((p) => p.id !== withClient.id)]);
+    setSelectedProject(withClient);
   };
 
   const handleUpdateProject = (updated: ProjectCardItem) => {
     setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    updateProject(updated);
     setSelectedProject(updated);
+  };
+
+  const handleCreateInvoice = (project: ProjectCardItem) => {
+    createDocument({
+      docType: 'invoice',
+      clientId: project.clientId,
+      projectId: project.id,
+      title: `Invoice — ${project.title}`,
+      amount: Math.max(project.budget - project.spent, 100000),
+      description: `Milestone billing for ${project.title}`,
+    });
   };
 
   // If a project card was clicked, render its dedicated workspace dashboard!
@@ -74,6 +106,14 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
         project={selectedProject}
         onBack={() => setSelectedProject(null)}
         onUpdateProject={handleUpdateProject}
+        onCreateInvoice={() => handleCreateInvoice(selectedProject)}
+        onOpenClient={() => {
+          if (selectedProject.clientId) {
+            navigate({ tab: 'clients', focus: { kind: 'client', id: selectedProject.clientId } });
+          } else if (selectedProject.client) {
+            navigate({ tab: 'clients' });
+          }
+        }}
       />
     );
   }

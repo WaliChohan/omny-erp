@@ -162,6 +162,8 @@ export interface SimpleBookkeepingEntry {
   referenceDocId?: string;
   projectId?: string;
   projectName?: string;
+  clientId?: string;
+  leadId?: string;
 }
 
 // ─── Initial PKR Seed Data ───────────────────────────────────────────────────
@@ -820,23 +822,26 @@ export interface CommercialDocument {
   terms?: string;
   projectId?: string;
   projectName?: string;
+  clientId?: string;
+  leadId?: string;
 }
 
 export const COMMERCIAL_DOCUMENTS: CommercialDocument[] = [
   {
     id: 'doc-inv-101',
     docType: 'invoice',
+    clientId: 'cli-1',
     docNumber: 'INV-2025-0101',
     title: 'Enterprise ERP Implementation - Milestone 1',
-    clientName: 'Acme Global Corp',
-    clientEmail: 'billing@acmeglobal.com',
+    clientName: 'CoolAir Pros',
+    clientEmail: 'james@coolairpros.com',
     clientAddress: '100 Silicon Ave, Suite 400 & Lahore Tech Park',
     issueDate: '2025-04-01',
     dueDate: '2025-04-15',
     currency: 'PKR',
     status: 'paid',
     projectId: 'p-1',
-    projectName: 'Enterprise ERP Platform',
+    projectName: 'CoolAir Pros — Booking Portal',
     items: [
       { id: 'i1', description: 'Core Next.js & PostgreSQL Multi-tenant Schemas', qty: 1, unitPrice: 1600000, total: 1600000 },
       { id: 'i2', description: 'Double-Entry General Ledger & Real-time Chart of Accounts', qty: 1, unitPrice: 1250000, total: 1250000 },

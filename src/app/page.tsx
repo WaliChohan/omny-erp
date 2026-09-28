@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import OmnysyncTopNav, { OmnysyncNavTab } from '@/components/layout/OmnysyncTopNav';
 import TodoList from '@/components/todo/TodoList';
 import Sidebar from '@/components/layout/Sidebar';
@@ -20,21 +20,15 @@ import ClientsView from '@/components/clients/ClientsView';
 import SettingsView from '@/components/settings/SettingsView';
 import ProjectsHubView from '@/components/projects/ProjectsHubView';
 
-import FinancialOverview from '@/components/finance/FinancialOverview';
-import SimpleAccountingView from '@/components/finance/SimpleAccountingView';
-import FinancialDocsHub from '@/components/finance/FinancialDocsHub';
-import ChartOfAccounts from '@/components/finance/ChartOfAccounts';
-import GeneralLedgerTable from '@/components/finance/GeneralLedgerTable';
-import VoucherManager from '@/components/finance/VoucherManager';
-import StatementOfAccounts from '@/components/finance/StatementOfAccounts';
+import AgencyBillingView from '@/components/finance/AgencyBillingView';
 import CRMView from '@/components/crm/CRMView';
 import ClientPortalView from '@/components/portal/ClientPortalView';
 
 // Modals
 import AskAIModal from '@/components/modals/AskAIModal';
 import CreateDocumentModal from '@/components/modals/CreateDocumentModal';
-import NewVoucherModal from '@/components/finance/NewVoucherModal';
 import QuickActionModal from '@/components/modals/QuickActionModal';
+import { useAgency, FinanceSubTab } from '@/context/AgencyContext';
 
 // Mock Data
 import {
@@ -46,15 +40,24 @@ import {
 } from '@/data/dashboardData';
 
 export default function AppMasterPage() {
+  const { navigation, clearNavigation } = useAgency();
   const [activeTab, setActiveTab] = useState<OmnysyncNavTab>('dashboard');
-  const [financeSubTab, setFinanceSubTab] = useState<'overview' | 'simple' | 'docs' | 'coa' | 'ledger' | 'vouchers' | 'soa'>('overview');
+  const [financeSubTab, setFinanceSubTab] = useState<FinanceSubTab>('overview');
   const [sidebarNav, setSidebarNav] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (!navigation) return;
+    const tab = navigation.tab === 'settings' ? 'tabular' : (navigation.tab as OmnysyncNavTab);
+    setActiveTab(tab);
+    setSidebarNav(navigation.tab === 'settings' ? 'settings' : navigation.tab);
+    if (navigation.financeSub) setFinanceSubTab(navigation.financeSub);
+    clearNavigation();
+  }, [navigation, clearNavigation]);
 
   // Modals
   const [isAskAIOpen, setIsAskAIOpen] = useState(false);
   const [isCreateDocOpen, setIsCreateDocOpen] = useState(false);
-  const [isNewVoucherOpen, setIsNewVoucherOpen] = useState(false);
   const [activeQuickAction, setActiveQuickAction] = useState<string | null>(null);
 
   // Filter modules for dashboard view
@@ -166,7 +169,7 @@ export default function AppMasterPage() {
                   } else if (id === 'metric-mrr') {
                     setActiveTab('finance');
                     setSidebarNav('finance');
-                    setFinanceSubTab('simple');
+                    setFinanceSubTab('invoices');
                   } else if (id === 'metric-customers') {
                     setActiveTab('crm');
                     setSidebarNav('crm');
@@ -278,57 +281,11 @@ export default function AppMasterPage() {
 
           {/* TAB 3: Financial Engine Suite (Screenshot 5 + 4-Level COA + Double-Entry Ledger) */}
           {activeTab === 'finance' && (
-            <div className="space-y-6 animate-in fade-in duration-150">
-              {/* Financial Sub-Navigation Tabs */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[#1b2620]">
-                {[
-                  { id: 'overview', label: 'Executive Dashboard & Banking' },
-                  { id: 'simple', label: 'Simplified Accounting' },
-                  { id: 'docs', label: 'Docs (Invoices, Receipts, SOWs, Quotes)' },
-                  { id: 'coa', label: '4-Level Chart of Accounts' },
-                  { id: 'ledger', label: 'Double-Entry General Ledger' },
-                  { id: 'vouchers', label: 'Vouchers (JV/PV/RV)' },
-                  { id: 'soa', label: 'Statement of Accounts' },
-                ].map((st) => (
-                  <button
-                    key={st.id}
-                    onClick={() => setFinanceSubTab(st.id as any)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                      financeSubTab === st.id
-                        ? 'bg-[#2dd4bf] text-[#052e24] shadow-md shadow-[#2dd4bf]/20'
-                        : 'bg-[#141e18] text-[#9ca3af] hover:text-white hover:bg-[#19261f]'
-                    }`}
-                  >
-                    {st.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Sub-view rendering */}
-              {financeSubTab === 'overview' && (
-                <FinancialOverview
-                  onOpenNewVoucher={() => setIsNewVoucherOpen(true)}
-                  onNavigateToCOA={() => setFinanceSubTab('coa')}
-                  onNavigateToSimpleAccounting={() => setFinanceSubTab('simple')}
-                  onNavigateToDocs={() => setFinanceSubTab('docs')}
-                />
-              )}
-
-              {financeSubTab === 'simple' && (
-                <SimpleAccountingView onOpenCreateDoc={() => setFinanceSubTab('docs')} />
-              )}
-
-              {financeSubTab === 'docs' && <FinancialDocsHub />}
-
-              {financeSubTab === 'coa' && <ChartOfAccounts />}
-
-              {financeSubTab === 'ledger' && <GeneralLedgerTable />}
-
-              {financeSubTab === 'vouchers' && (
-                <VoucherManager onOpenNewVoucher={() => setIsNewVoucherOpen(true)} />
-              )}
-
-              {financeSubTab === 'soa' && <StatementOfAccounts />}
+            <div className="animate-in fade-in duration-150">
+              <AgencyBillingView
+                subTab={financeSubTab}
+                onSubTabChange={setFinanceSubTab}
+              />
             </div>
           )}
 
@@ -383,15 +340,6 @@ export default function AppMasterPage() {
       <CreateDocumentModal
         isOpen={isCreateDocOpen}
         onClose={() => setIsCreateDocOpen(false)}
-      />
-
-      <NewVoucherModal
-        isOpen={isNewVoucherOpen}
-        onClose={() => setIsNewVoucherOpen(false)}
-        onVoucherCreated={(v) => {
-          alert(`Successfully posted ${v.voucherType} for Rs. ${v.totalAmount.toLocaleString()} to General Ledger!`);
-          setFinanceSubTab('ledger');
-        }}
       />
 
       <QuickActionModal
