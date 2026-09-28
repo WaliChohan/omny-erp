@@ -54,6 +54,7 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
     addTicket,
     replyToTicket,
     recordPayment,
+    createHubDocument,
     tickets: storeTickets,
   } = useAgency();
 
@@ -143,19 +144,64 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
   };
 
   const handleSimulateFileUpload = () => {
-    const name = 'Client_Upload_' + Date.now() + '.pdf';
-    setFiles((prev) => [
-      {
-        id: 'file-' + Date.now(),
-        name,
-        size: 'PDF',
-        type: 'pdf',
-        uploadedAt: new Date().toISOString().slice(0, 10),
-        uploadedBy: profile.name,
-        category: 'Deliverable',
-      },
-      ...prev,
-    ]);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.zip';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      const fileName = file?.name || `Client_Upload_${Date.now()}.pdf`;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const hubDoc = createHubDocument({
+        docNumber: `FILE-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        type: 'proposal',
+        subtype: 'standard',
+        status: 'draft',
+        clientId: portalClientId,
+        projectId: selectedProjectId || projects[0]?.id,
+        clientName: profile.name,
+        clientCompany: profile.company,
+        clientEmail: profile.email,
+        clientPhone: profile.phone,
+        clientAddress: profile.company,
+        issueDate: todayIso,
+        dueDate: todayIso,
+        currency: 'PKR',
+        subtotal: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        discountAmount: 0,
+        grandTotal: 0,
+        notes: `Portal upload: ${fileName}${file ? ` (${Math.round(file.size / 1024)} KB)` : ''}`,
+        terms: 'Client-uploaded file via portal',
+        items: [
+          {
+            id: 'item-1',
+            itemType: 'service',
+            skuOrCode: 'UPLOAD',
+            description: fileName,
+            quantity: 1,
+            unitName: 'file',
+            unitPrice: 0,
+            taxRate: 0,
+            discount: 0,
+            totalPrice: 0,
+          },
+        ],
+      });
+      setFiles((prev) => [
+        {
+          id: hubDoc.id,
+          name: fileName,
+          size: file ? `${Math.max(1, Math.round(file.size / 1024))} KB` : 'PDF',
+          type: file?.type || 'pdf',
+          uploadedAt: todayIso,
+          uploadedBy: profile.name,
+          category: 'Deliverable',
+        },
+        ...prev,
+      ]);
+    };
+    input.click();
   };
 
   const handleSendReply = (e: React.FormEvent) => {

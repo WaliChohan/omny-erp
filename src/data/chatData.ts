@@ -31,7 +31,7 @@ export interface ChatChannel {
 }
 
 export interface ERPMention {
-  type: 'user' | 'channel' | 'invoice' | 'project' | 'task' | 'voucher';
+  type: 'user' | 'channel' | 'invoice' | 'project' | 'task' | 'client';
   id: string;
   label: string;
 }
@@ -142,8 +142,8 @@ export const CURRENT_USER = CHAT_USERS.find((u) => u.isCurrentUser)!;
 export const INITIAL_CHANNELS: ChatChannel[] = [
   {
     id: 'ch-general',
-    name: 'general',
-    description: 'Company-wide announcements and discussions',
+    name: 'agency-ops',
+    description: 'OMNYSYNC agency ops — clients, delivery, and blockers',
     type: 'public',
     members: CHAT_USERS.map((u) => u.id),
     createdBy: 'user-wali',
@@ -152,8 +152,8 @@ export const INITIAL_CHANNELS: ChatChannel[] = [
   },
   {
     id: 'ch-finance',
-    name: 'finance',
-    description: 'Finance team — GL reconciliations, vouchers, and reporting',
+    name: 'billing',
+    description: 'Quotes, invoices, payments, and retainers (agency billing)',
     type: 'public',
     members: ['user-wali', 'user-ahmed'],
     createdBy: 'user-wali',
@@ -162,8 +162,8 @@ export const INITIAL_CHANNELS: ChatChannel[] = [
   },
   {
     id: 'ch-sales',
-    name: 'sales',
-    description: 'Pipeline updates, lead tracking, and deal wins',
+    name: 'pipeline',
+    description: 'CRM pipeline — HVAC & home-services leads and deals',
     type: 'public',
     members: ['user-wali', 'user-sarah'],
     createdBy: 'user-sarah',
@@ -172,8 +172,8 @@ export const INITIAL_CHANNELS: ChatChannel[] = [
   },
   {
     id: 'ch-dev',
-    name: 'dev-ops',
-    description: 'Engineering — deployments, bugs, and technical discussions',
+    name: 'delivery',
+    description: 'Project delivery — websites, software, SEO, and apps',
     type: 'private',
     members: ['user-wali', 'user-omar'],
     createdBy: 'user-omar',
@@ -182,8 +182,8 @@ export const INITIAL_CHANNELS: ChatChannel[] = [
   },
   {
     id: 'ch-hr',
-    name: 'hr-team',
-    description: 'HR discussions — onboarding, payroll, and policies',
+    name: 'clients',
+    description: 'Client account notes — CoolAir, ComfortZone, Apex, and more',
     type: 'private',
     members: ['user-wali', 'user-zara'],
     createdBy: 'user-zara',
@@ -257,13 +257,13 @@ export const SEED_MESSAGES: ChatMessage[] = [
     channelId: 'ch-general',
     senderId: 'user-ahmed',
     content:
-      'Fantastic numbers! Just finished posting the final **Journal Voucher JV-2025-031** to the General Ledger. All accounts reconcile with zero discrepancy. 📊',
+      'Fantastic numbers! Just finished posting the final **Journal Client JV-2025-031** to the General Ledger. All accounts reconcile with zero discrepancy. 📊',
     isPinned: false,
     isEdited: false,
     reactions: [{ emoji: '✅', userIds: ['user-wali'] }],
     attachments: [],
     erpMentions: [
-      { type: 'voucher', id: 'JV-2025-031', label: 'JV-2025-031' },
+      { type: 'client', id: 'cli-1', label: 'CoolAir Pros' },
     ],
     createdAt: ts(115),
     updatedAt: ts(115),
@@ -391,13 +391,13 @@ export const SEED_MESSAGES: ChatMessage[] = [
     id: 'msg-011',
     channelId: 'ch-finance',
     senderId: 'user-wali',
-    content: 'Approved. Just signed off on it in the portal. Please post the **Payment Voucher PV-2025-088** once you receive the wire transfer. Thanks Ahmed.',
+    content: 'Approved. Just signed off on it in the portal. Please post the **Payment Client PV-2025-088** once you receive the wire transfer. Thanks Ahmed.',
     isPinned: false,
     isEdited: false,
     reactions: [{ emoji: '✅', userIds: ['user-ahmed'] }],
     attachments: [],
     erpMentions: [
-      { type: 'voucher', id: 'PV-2025-088', label: 'PV-2025-088' },
+      { type: 'client', id: 'cli-2', label: 'HomeComfort HVAC' },
     ],
     createdAt: ts(195),
     updatedAt: ts(195),
@@ -428,7 +428,7 @@ export const SEED_MESSAGES: ChatMessage[] = [
     reactions: [],
     attachments: [],
     erpMentions: [
-      { type: 'voucher', id: 'JV-2025-044', label: 'JV-2025-044' },
+      { type: 'client', id: 'cli-1', label: 'CoolAir Pros' },
     ],
     createdAt: ts(30),
     updatedAt: ts(30),
@@ -598,13 +598,13 @@ export const SEED_MESSAGES: ChatMessage[] = [
 // ── ERP Entity Suggestions (for @mention autocomplete) ──────────────────────
 
 export const ERP_ENTITIES = [
-  { type: 'invoice' as const, id: 'INV-2025-088', label: 'Invoice #INV-2025-088' },
-  { type: 'invoice' as const, id: 'INV-2025-075', label: 'Invoice #INV-2025-075' },
-  { type: 'voucher' as const, id: 'JV-2025-031', label: 'Journal Voucher JV-2025-031' },
-  { type: 'voucher' as const, id: 'PV-2025-088', label: 'Payment Voucher PV-2025-088' },
-  { type: 'project' as const, id: 'proj-apex', label: 'Project: Apex Logistics' },
-  { type: 'project' as const, id: 'proj-techcore', label: 'Project: TechCore Solutions' },
-  { type: 'task' as const, id: 'task-gl-recon', label: 'Task: GL Reconciliation Q3' },
+  { type: 'invoice' as const, id: 'INV-2025-0101', label: 'Invoice #INV-2025-0101' },
+  { type: 'invoice' as const, id: 'INV-2025-0102', label: 'Invoice #INV-2025-0102' },
+  { type: 'client' as const, id: 'cli-1', label: 'Client: CoolAir Pros' },
+  { type: 'client' as const, id: 'cli-2', label: 'Client: HomeComfort HVAC' },
+  { type: 'project' as const, id: 'proj-1', label: 'Project: CoolAir Website + SEO' },
+  { type: 'project' as const, id: 'proj-2', label: 'Project: HomeComfort Booking App' },
+  { type: 'task' as const, id: 'task-invoice-followup', label: 'Task: Follow up unpaid invoices' },
 ];
 
 // ── Common Emoji Set for Picker ───────────────────────────────────────────────

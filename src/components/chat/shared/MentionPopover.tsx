@@ -2,10 +2,10 @@
 
 import React, { useMemo } from 'react';
 import { CHAT_USERS, ERP_ENTITIES, INITIAL_CHANNELS } from '@/data/chatData';
-import { Hash, User, FileText, Briefcase, CheckSquare, Receipt } from 'lucide-react';
+import { Hash, User, FileText, Briefcase, CheckSquare } from 'lucide-react';
 
 export interface MentionSuggestion {
-  type: 'user' | 'channel' | 'invoice' | 'project' | 'task' | 'voucher';
+  type: 'user' | 'channel' | 'invoice' | 'project' | 'task' | 'client';
   id: string;
   label: string;
   sublabel?: string;
@@ -21,7 +21,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   user: User,
   channel: Hash,
   invoice: FileText,
-  voucher: Receipt,
+  client: Briefcase,
   project: Briefcase,
   task: CheckSquare,
 };
@@ -30,7 +30,7 @@ const TYPE_COLORS: Record<string, string> = {
   user: 'text-[#2dd4bf]',
   channel: 'text-[#9ca3af]',
   invoice: 'text-[#fbbf24]',
-  voucher: 'text-[#a855f7]',
+  client: 'text-[#a855f7]',
   project: 'text-[#38bdf8]',
   task: 'text-[#b8ff00]',
 };

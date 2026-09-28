@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   CheckSquare,
   Square,
@@ -34,21 +34,8 @@ const CATEGORIES: TaskCategory[] = ['All', 'Finance', 'Sales', 'Dev', 'Operation
 export default function TodoList() {
   const agency = useAgency();
   const tasks = agency.tasks;
-  const setTasks = (updater: any) => {
-    if (typeof updater === 'function') {
-      const next = updater(agency.tasks);
-      // sync diffs
-      next.forEach((t: AgencyTask) => {
-        const prev = agency.tasks.find((x) => x.id === t.id);
-        if (!prev) agency.addTask(t);
-        else if (JSON.stringify(prev) !== JSON.stringify(t)) agency.updateTask(t);
-      });
-      agency.tasks.forEach((t) => {
-        if (!next.find((x: AgencyTask) => x.id === t.id)) agency.deleteTask(t.id);
-      });
-    }
-  };
-    const [activeCategory, setActiveCategory] = useState<TaskCategory>('All');
+
+  const [activeCategory, setActiveCategory] = useState<TaskCategory>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
 
@@ -63,24 +50,13 @@ export default function TodoList() {
   const [formDueDate, setFormDueDate] = useState('');
   const [formAssigneeId, setFormAssigneeId] = useState<string>(TEAM_MEMBERS[0].id);
 
-    // Save to localStorage whenever tasks change
-  const saveTasks = (newTasks: Task[]) => {
-    setTasks(newTasks);
-    try {
-      localStorage.setItem('omnysync_erp_tasks', JSON.stringify(newTasks));
-    } catch {
-      // ignore
-    }
-  };
-
   const handleToggleTask = (id: string) => {
-    const updated = tasks.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
-    saveTasks(updated);
+    const t = tasks.find((x) => x.id === id);
+    if (t) agency.updateTask({ ...t, completed: !t.completed });
   };
 
   const handleDeleteTask = (id: string) => {
-    const updated = tasks.filter((t) => t.id !== id);
-    saveTasks(updated);
+    agency.deleteTask(id);
   };
 
   const handleStartEdit = (task: Task) => {
@@ -101,33 +77,28 @@ export default function TodoList() {
     const assignedMember = TEAM_MEMBERS.find((m) => m.id === formAssigneeId) || TEAM_MEMBERS[0];
 
     if (editingTaskId) {
-      const updated = tasks.map((t) =>
-        t.id === editingTaskId
-          ? {
-              ...t,
-              title: formTitle.trim(),
-              description: formDesc.trim(),
-              category: formCategory,
-              priority: formPriority,
-              dueDate: formDueDate || new Date().toISOString().slice(0, 10),
-              assignee: assignedMember,
-            }
-          : t
-      );
-      saveTasks(updated);
+      const existing = tasks.find((t) => t.id === editingTaskId);
+      if (existing) {
+        agency.updateTask({
+          ...existing,
+          title: formTitle.trim(),
+          description: formDesc.trim(),
+          category: formCategory,
+          priority: formPriority,
+          dueDate: formDueDate || new Date().toISOString().slice(0, 10),
+          assignee: assignedMember,
+        });
+      }
     } else {
-      const newTask: Task = {
-        id: `task-${Date.now()}`,
+      agency.addTask({
         title: formTitle.trim(),
         description: formDesc.trim(),
         category: formCategory,
         priority: formPriority,
         dueDate: formDueDate || new Date().toISOString().slice(0, 10),
         completed: false,
-        createdAt: new Date().toISOString().slice(0, 10),
         assignee: assignedMember,
-      };
-      saveTasks([newTask, ...tasks]);
+      });
     }
 
     // Reset form

@@ -6,22 +6,7 @@ import { useChatStore } from '@/context/ChatContext';
 import UserAvatar from '@/components/chat/shared/UserAvatar';
 import AttachmentPreview from '@/components/chat/shared/AttachmentPreview';
 import EmojiPicker from '@/components/chat/shared/EmojiPicker';
-import {
-  SmilePlus,
-  MessageSquare,
-  Pin,
-  PinOff,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  FileText,
-  Receipt,
-  Briefcase,
-  CheckSquare,
-  Hash,
-  User,
-} from 'lucide-react';
+import { SmilePlus, MessageSquare, Pin, PinOff, Pencil, Trash2, Check, X, FileText, Briefcase, CheckSquare, Hash, User } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -135,7 +120,7 @@ function ERPMentionChip({ label, type }: { label: string; type: string }) {
     user: User,
     channel: Hash,
     invoice: FileText,
-    voucher: Receipt,
+    client: Briefcase,
     project: Briefcase,
     task: CheckSquare,
   };
@@ -143,7 +128,7 @@ function ERPMentionChip({ label, type }: { label: string; type: string }) {
     user: 'bg-[#2dd4bf]/15 text-[#2dd4bf] border-[#2dd4bf]/30',
     channel: 'bg-[#9ca3af]/15 text-[#9ca3af] border-[#9ca3af]/30',
     invoice: 'bg-[#fbbf24]/15 text-[#fbbf24] border-[#fbbf24]/30',
-    voucher: 'bg-[#a855f7]/15 text-[#a855f7] border-[#a855f7]/30',
+    client: 'bg-[#a855f7]/15 text-[#a855f7] border-[#a855f7]/30',
     project: 'bg-[#38bdf8]/15 text-[#38bdf8] border-[#38bdf8]/30',
     task: 'bg-[#b8ff00]/15 text-[#b8ff00] border-[#b8ff00]/30',
   };
