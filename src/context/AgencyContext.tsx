@@ -96,7 +96,7 @@ interface AgencyContextType {
 
   upsertClient: (client: AgencyClient) => void;
   updateClientStatus: (id: string, status: ClientStatus) => void;
-  convertLeadToClient: (leadId: string) => AgencyClient | null;
+  convertLeadToClient: (leadId: string, opts?: { createProject?: boolean }) => AgencyClient | null;
   createProjectForClient: (
     clientId: string,
     input?: Partial<Pick<ProjectCardItem, 'title' | 'category' | 'budget' | 'description' | 'deadline'>>
@@ -132,6 +132,8 @@ interface AgencyContextType {
   leadActivities: LeadActivity[];
   addLeadActivity: (activity: Omit<LeadActivity, 'id' | 'createdAt'> & { createdAt?: string }) => LeadActivity;
   getLeadActivities: (leadId: string) => LeadActivity[];
+  updateLeadActivity: (id: string, patch: Partial<Pick<LeadActivity, 'content' | 'outcome' | 'durationSec'>>) => void;
+  deleteLeadActivity: (id: string) => void;
   logCall: (input: {
     leadId: string;
     outcome: CallOutcome;
@@ -405,7 +407,7 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const convertLeadToClient = useCallback(
-    (leadId: string) => {
+    (leadId: string, opts?: { createProject?: boolean }) => {
       const lead = leads.find((l) => l.id === leadId);
       if (!lead) return null;
       const existing = clients.find((c) => c.leadId === leadId || c.email === lead.email);
@@ -437,8 +439,39 @@ export function AgencyProvider({ children }: { children: React.ReactNode }) {
       setLeads((prev) =>
         prev.map((l) => (l.id === leadId ? { ...l, status: 'Converted' as const } : l))
       );
-      showToast(`Client created: ${client.company}`);
-      navigate({ tab: 'clients', focus: { kind: 'client', id: client.id } });
+      if (opts?.createProject) {
+        const pid = `p-${Date.now()}`;
+        const project: ProjectCardItem = {
+          id: pid,
+          title: `${client.company} — Engagement`,
+          category: 'Website',
+          progressPercent: 0,
+          tasksCount: 0,
+          avatarsCount: 1,
+          deadline: today(),
+          budget: lead.estimatedValue || 0,
+          spent: 0,
+          themeColor: 'purple',
+          bgGradient: 'bg-gradient-to-br from-[#6d4cb8] to-[#5939a8]',
+          team: [TEAM_MEMBERS[0]],
+          description: `Auto-created on lead convert from ${lead.name}`,
+          client: client.company,
+          clientId: client.id,
+          status: 'planning',
+          archived: false,
+          milestones: [],
+          updatedAt: today(),
+        };
+        setProjects((prev) => [project, ...prev]);
+        setClients((prev) =>
+          prev.map((c) => (c.id === client.id ? { ...c, openProjects: (c.openProjects || 0) + 1, status: 'Active' as const } : c))
+        );
+        showToast(`Client + project created: ${client.company}`);
+        navigate({ tab: 'projects', focus: { kind: 'project', id: pid } });
+      } else {
+        showToast(`Client created: ${client.company}`);
+        navigate({ tab: 'clients', focus: { kind: 'client', id: client.id } });
+      }
       return client;
     },
     [leads, clients, navigate, showToast]
@@ -1316,6 +1349,16 @@ const addLeadActivity = useCallback(
     [leadActivities]
   );
 
+  const updateLeadActivity = useCallback((id: string, patch: Partial<Pick<LeadActivity, 'content' | 'outcome' | 'durationSec'>>) => {
+    setLeadActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+    showToast('Activity updated');
+  }, [showToast]);
+
+  const deleteLeadActivity = useCallback((id: string) => {
+    setLeadActivities((prev) => prev.filter((a) => a.id !== id));
+    showToast('Activity deleted');
+  }, [showToast]);
+
   const logCall = useCallback(
     (input: { leadId: string; outcome: CallOutcome; notes: string; durationSec?: number }) => {
       const row = addLeadActivity({
@@ -1377,6 +1420,8 @@ const addLeadActivity = useCallback(
       leadActivities,
       addLeadActivity,
       getLeadActivities,
+    updateLeadActivity,
+    deleteLeadActivity,
       logCall,
       getClient,
       getProjectsForClient,

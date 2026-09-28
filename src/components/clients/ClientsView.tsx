@@ -41,6 +41,7 @@ export default function ClientsView() {
     clients,
     upsertClient,
     updateClientStatus,
+    getLeadActivities,
     createProjectForClient,
     createDocument,
     getProjectsForClient,
@@ -458,6 +459,33 @@ export default function ClientsView() {
                 ))}
               </div>
               <PortalAdminPanel clientId={selected.id} clientName={selected.company} />
+          {selected.leadId && (
+            <div className="rounded-2xl border border-[#1e2a22] bg-[#0f1a16] p-4 space-y-3">
+              <p className="text-[10px] uppercase tracking-wider text-[#2dd4bf] font-bold">Call / activity history</p>
+              <p className="text-[11px] text-[#9ca3af]">From linked CRM lead — dialer remarks persist here.</p>
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {getLeadActivities(selected.leadId).length === 0 && (
+                  <p className="text-[11px] text-[#6b7280]">No calls or notes yet. Open the lead in CRM to dial.</p>
+                )}
+                {getLeadActivities(selected.leadId).map((a) => (
+                  <div key={a.id} className="p-2.5 rounded-xl bg-[#0b1210] border border-[#1e2a22] text-[11px]">
+                    <div className="flex justify-between gap-2 mb-1">
+                      <span className="text-[#2dd4bf] font-semibold uppercase text-[9px]">
+                        {a.type}{a.outcome ? ` · ${a.outcome.replace('_', ' ')}` : ''}
+                      </span>
+                      <span className="text-[9px] font-mono text-[#6b7280]">{new Date(a.createdAt).toLocaleString()}</span>
+                    </div>
+                    <p className="text-[#e5e7eb]">{a.content}</p>
+                  </div>
+                ))}
+              </div>
+              {selected.phone && (
+                <a href={`tel:${selected.phone.replace(/[^0-9+]/g, '')}`} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#2dd4bf]">
+                  tel: {selected.phone}
+                </a>
+              )}
+            </div>
+          )}
             </>
           )}
         </div>

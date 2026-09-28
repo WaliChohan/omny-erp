@@ -23,13 +23,14 @@ import {
   Sparkles,
 } from 'lucide-react';
 import {
-  CRM_LEADS,
   LeadCard,
   LeadFilter,
   LeadSource,
   LEAD_FILTERS,
 } from '@/data/crmData';
 import BulkImportLeadsModal from '@/components/crm/BulkImportLeadsModal';
+import { useAgency } from '@/context/AgencyContext';
+import LeadDetailModal from '@/components/crm/LeadDetailModal';
 
 interface LeadsDatabaseViewProps {
   onConvertToDeal?: (lead: LeadCard) => void;
@@ -40,10 +41,22 @@ export default function LeadsDatabaseView({
   onConvertToDeal,
   onOpenCreateDoc,
 }: LeadsDatabaseViewProps) {
-  const [leads, setLeads] = useState<LeadCard[]>(CRM_LEADS);
+  const {
+    leads,
+    addLead,
+    updateLead,
+    deleteLead,
+    importLeads,
+    convertLeadToClient,
+    createDocument,
+    createProjectForClient,
+    clients,
+  } = useAgency();
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [detailLead, setDetailLead] = useState<LeadCard | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   // Modals
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -119,7 +132,7 @@ export default function LeadsDatabaseView({
       createdDate: new Date().toISOString().split('T')[0],
     };
 
-    setLeads([newLead, ...leads]);
+    addLead(newLead);
     setIsAddLeadOpen(false);
     setFormName('');
     setFormCompany('');
@@ -130,32 +143,32 @@ export default function LeadsDatabaseView({
 
   // Handle bulk import commit
   const handleBulkImport = (imported: LeadCard[]) => {
-    setLeads([...imported, ...leads]);
+    importLeads(imported);
   };
 
   // Quick toggle status
   const handleToggleStatus = (id: string) => {
-    setLeads((prev) =>
-      prev.map((lead) => {
-        if (lead.id !== id) return lead;
-        const current = lead.status || 'New';
-        const next: LeadCard['status'] =
-          current === 'New'
-            ? 'Contacted'
-            : current === 'Contacted'
-            ? 'Qualified'
-            : current === 'Qualified'
-            ? 'Proposal'
-            : current === 'Proposal'
-            ? 'Converted'
-            : 'New';
-        return { ...lead, status: next };
-      })
-    );
+    const lead = leads.find((l) => l.id === id);
+    if (!lead) return;
+    const current = lead.status || 'New';
+    const next: LeadCard['status'] =
+      current === 'New'
+        ? 'Contacted'
+        : current === 'Contacted'
+        ? 'Qualified'
+        : current === 'Qualified'
+        ? 'Proposal'
+        : current === 'Proposal'
+        ? 'Converted'
+        : current === 'Converted'
+        ? 'Lost'
+        : 'New';
+    updateLead({ ...lead, status: next });
   };
 
   const handleDeleteLead = (id: string) => {
-    setLeads(leads.filter((l) => l.id !== id));
+    if (!confirm('Delete this lead?')) return;
+    deleteLead(id);
   };
 
   return (
@@ -379,14 +392,22 @@ export default function LeadsDatabaseView({
                     {/* Action buttons */}
                     <td className="p-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => { setDetailLead(lead); setDetailOpen(true); }}
+                          className="px-2.5 py-1 rounded-lg bg-[#b8ff00]/15 hover:bg-[#b8ff00]/25 border border-[#b8ff00]/30 text-[#b8ff00] text-[11px] font-bold flex items-center gap-1 transition-colors"
+                          title="Open lead"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Open</span>
+                        </button>
                         {onConvertToDeal && (
                           <button
                             onClick={() => onConvertToDeal(lead)}
                             className="px-2.5 py-1 rounded-lg bg-[#00e676]/15 hover:bg-[#00e676]/25 border border-[#00e676]/30 text-[#00e676] text-[11px] font-bold flex items-center gap-1 transition-colors"
-                            title="Create sales deal with this client"
+                            title="Promote in pipeline"
                           >
                             <Plus className="w-3 h-3" />
-                            <span>Deal</span>
+                            <span>Pipeline</span>
                           </button>
                         )}
 
@@ -573,6 +594,34 @@ export default function LeadsDatabaseView({
         onClose={() => setIsBulkImportOpen(false)}
         onImportLeads={handleBulkImport}
       />
+
+      <LeadDetailModal
+        lead={detailLead ? leads.find((l) => l.id === detailLead.id) || detailLead : null}
+        isOpen={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        queue={filteredLeads}
+        onOpenLead={(l) => setDetailLead(l)}
+        onConvertToDeal={onConvertToDeal}
+        onConvertToClient={(l) => convertLeadToClient(l.id, { createProject: true })}
+        onCreateQuote={(l) => {
+          let client = clients.find((c) => c.leadId === l.id || c.email === l.email);
+          if (!client) client = convertLeadToClient(l.id) || undefined;
+          createDocument({
+            docType: 'quotation',
+            clientId: client?.id,
+            leadId: l.id,
+            title: `Quote — ${l.company || l.name}`,
+            amount: l.estimatedValue || 500000,
+          });
+        }}
+        onCreateProject={(l) => {
+          let client = clients.find((c) => c.leadId === l.id || c.email === l.email);
+          if (!client) client = convertLeadToClient(l.id) || undefined;
+          if (client) createProjectForClient(client.id, { title: `${client.company} — Engagement`, budget: l.estimatedValue || 500000 });
+        }}
+        onDelete={(l) => { handleDeleteLead(l.id); setDetailOpen(false); }}
+      />
+
     </div>
   );
 }

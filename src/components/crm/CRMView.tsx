@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAgency } from '@/context/AgencyContext';
-import { ArrowUpRight, Plus, ChevronDown, LayoutGrid, GitBranch, Database, Upload } from 'lucide-react';
+import { ArrowUpRight, Plus, ChevronDown, LayoutGrid, GitBranch, Database, Search, Upload } from 'lucide-react';
 import SalesPipelineView from '@/components/crm/SalesPipelineView';
 import LeadsDatabaseView from '@/components/crm/LeadsDatabaseView';
 import BulkImportLeadsModal from '@/components/crm/BulkImportLeadsModal';
@@ -183,6 +183,8 @@ export default function CRMView() {
     leads: agencyLeads,
     importLeads,
     deleteLead,
+    addLead,
+    updateLead,
   } = useAgency();
   const [crmSubTab, setCrmSubTab] = useState<'workspace' | 'pipeline' | 'database'>('workspace');
   const [activeFilter, setActiveFilter] = useState<LeadFilter>('All');
@@ -190,16 +192,37 @@ export default function CRMView() {
   const [activeDetailLead, setActiveDetailLead] = useState<LeadCard | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedLeadForDeal, setSelectedLeadForDeal] = useState<LeadCard | null>(null);
+  const [workspaceSearch, setWorkspaceSearch] = useState('');
+  const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCompany, setNewCompany] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [convertWithProject, setConvertWithProject] = useState(true);
   const leadsList = agencyLeads;
 
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>(
     Object.fromEntries(SCHEDULE_TOGGLES.map((t) => [t.id, t.active]))
   );
 
-  const filteredLeads =
-    activeFilter === 'All'
-      ? leadsList
-      : leadsList.filter((l) => l.priority === activeFilter);
+  const filteredLeads = leadsList.filter((l) => {
+    if (activeFilter !== 'All' && l.priority !== activeFilter) return false;
+    if (!workspaceSearch.trim()) return true;
+    const q = workspaceSearch.toLowerCase();
+    return (
+      l.name.toLowerCase().includes(q) ||
+      (l.company || '').toLowerCase().includes(q) ||
+      (l.email || '').toLowerCase().includes(q) ||
+      (l.phone || '').includes(q)
+    );
+  });
+
+  const liveMetrics = [
+    { id: 'open', count: leadsList.filter((l) => l.status !== 'Converted' && l.status !== 'Lost').length, label: 'Open leads', badgeColor: 'bg-[#00e676]' },
+    { id: 'hot', count: leadsList.filter((l) => l.priority === 'Hot Clients').length, label: 'Hot', badgeColor: 'bg-[#f97316]' },
+    { id: 'won', count: leadsList.filter((l) => l.status === 'Converted').length, label: 'Converted', badgeColor: 'bg-[#38bdf8]' },
+    { id: 'lost', count: leadsList.filter((l) => l.status === 'Lost').length, label: 'Lost', badgeColor: 'bg-[#dc2626]' },
+  ];
 
   const handleToggle = (id: string) =>
     setToggleStates((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -225,7 +248,37 @@ export default function CRMView() {
   };
 
   const handleConvertToClient = (lead: LeadCard) => {
-    convertLeadToClient(lead.id);
+    convertLeadToClient(lead.id, { createProject: convertWithProject });
+  };
+
+  const handleAddWorkspaceLead = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    const initials = newName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+    const lead: LeadCard = {
+      id: `lead-${Date.now()}`,
+      name: newName.trim(),
+      company: newCompany.trim() || undefined,
+      title: newCompany ? `Contact at ${newCompany}` : 'Prospect',
+      email: newEmail.trim() || undefined,
+      phone: newPhone.trim() || undefined,
+      avatarInitials: initials || 'LD',
+      avatarColor: 'bg-[#15803d]',
+      sources: ['Website'],
+      priority: 'Hot Clients',
+      rating: 4,
+      status: 'New',
+      estimatedValue: 45000,
+      createdDate: new Date().toISOString().slice(0, 10),
+    };
+    addLead(lead);
+    setIsAddLeadOpen(false);
+    setNewName('');
+    setNewCompany('');
+    setNewPhone('');
+    setNewEmail('');
+    setActiveDetailLead(lead);
+    setIsDetailModalOpen(true);
   };
 
   const handleCreateQuote = (lead: LeadCard) => {
@@ -294,13 +347,35 @@ export default function CRMView() {
           </button>
         </div>
 
-        <button
-          onClick={() => setIsBulkImportOpen(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#1a1a1a] border border-[#2e2e2e] hover:border-[#b8ff00] text-xs font-bold text-white transition-all shadow-sm"
-        >
-          <Upload className="w-3.5 h-3.5 text-[#b8ff00]" />
-          <span>Bulk Import Leads</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+            <input
+              value={workspaceSearch}
+              onChange={(e) => setWorkspaceSearch(e.target.value)}
+              placeholder="Search leads…"
+              className="bg-[#1a1a1a] border border-[#2e2e2e] focus:border-[#b8ff00] rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none w-48"
+            />
+          </div>
+          <label className="flex items-center gap-1.5 text-[10px] text-[#9ca3af] font-semibold px-2">
+            <input type="checkbox" checked={convertWithProject} onChange={(e) => setConvertWithProject(e.target.checked)} className="rounded" />
+            Convert + project
+          </label>
+          <button
+            type="button"
+            onClick={() => setIsAddLeadOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#b8ff00] text-black text-xs font-black shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3]" /> Add lead
+          </button>
+          <button
+            onClick={() => setIsBulkImportOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#1a1a1a] border border-[#2e2e2e] hover:border-[#b8ff00] text-xs font-bold text-white transition-all shadow-sm"
+          >
+            <Upload className="w-3.5 h-3.5 text-[#b8ff00]" />
+            <span>Bulk Import Leads</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Leads Database View ──────────────────────────────────────────── */}
@@ -391,7 +466,7 @@ export default function CRMView() {
 
           {/* Metrics */}
           <div className="flex items-center gap-5 ml-2">
-            {WORKSPACE_METRICS.map((m) => (
+            {liveMetrics.map((m) => (
               <div key={m.id} className="flex items-start gap-1.5">
                 <span className="text-3xl font-black text-white leading-none">{m.count}</span>
                 <div className="flex flex-col mt-0.5">
@@ -482,6 +557,23 @@ export default function CRMView() {
         entity="leads"
         onImportLeads={handleBulkImport}
       />
+
+      {isAddLeadOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <form onSubmit={handleAddWorkspaceLead} className="w-full max-w-md rounded-2xl bg-[#111] border border-[#222] p-5 space-y-3">
+            <h3 className="text-sm font-black text-white">Add lead</h3>
+            <input required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name *" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#b8ff00]" />
+            <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)} placeholder="Company" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#b8ff00]" />
+            <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#b8ff00]" />
+            <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="Phone" className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#b8ff00]" />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setIsAddLeadOpen(false)} className="px-3 py-2 text-xs text-[#9ca3af]">Cancel</button>
+              <button type="submit" className="px-4 py-2 rounded-xl bg-[#b8ff00] text-black text-xs font-bold">Create</button>
+            </div>
+          </form>
+        </div>
+      )}
+
 
       {/* Lead Detail Dossier Modal (Opened by Circle Arrow Button) */}
       <LeadDetailModal

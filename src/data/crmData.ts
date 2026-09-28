@@ -217,7 +217,26 @@ export const CRM_LEADS: LeadCard[] = [
   },
 ];
 
-// ─── Pipeline / Deals ────────────────────────────────────────────────────────
+
+export type LeadPipelineStatus = NonNullable<LeadCard['status']>;
+
+export const LEAD_PIPELINE_STAGES: {
+  id: LeadPipelineStatus;
+  label: string;
+  badgeColor: string;
+  textColor: string;
+  borderColor: string;
+  glowColor: string;
+}[] = [
+  { id: 'New', label: 'New', badgeColor: 'bg-[#3b82f6]/20', textColor: 'text-[#60a5fa]', borderColor: 'border-[#1e293b]', glowColor: '#3b82f6' },
+  { id: 'Contacted', label: 'Contacted', badgeColor: 'bg-[#a855f7]/20', textColor: 'text-[#c084fc]', borderColor: 'border-[#2e1065]', glowColor: '#a855f7' },
+  { id: 'Qualified', label: 'Qualified', badgeColor: 'bg-[#f59e0b]/20', textColor: 'text-[#fbbf24]', borderColor: 'border-[#451a03]', glowColor: '#f59e0b' },
+  { id: 'Proposal', label: 'Proposal', badgeColor: 'bg-[#38bdf8]/20', textColor: 'text-[#7dd3fc]', borderColor: 'border-[#0c4a6e]', glowColor: '#38bdf8' },
+  { id: 'Converted', label: 'Won / Converted', badgeColor: 'bg-[#00e676]/20', textColor: 'text-[#00e676]', borderColor: 'border-[#052e16]', glowColor: '#00e676' },
+  { id: 'Lost', label: 'Lost', badgeColor: 'bg-[#ef4444]/20', textColor: 'text-[#f87171]', borderColor: 'border-[#450a0a]', glowColor: '#ef4444' },
+];
+
+// Pipeline / Deals ────────────────────────────────────────────────────────
 
 export type DealStage =
   | 'prospecting'

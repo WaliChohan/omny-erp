@@ -1,27 +1,25 @@
-'use client';
+﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   ArrowUpRight,
   GripVertical,
-  Calendar,
-  ChevronDown,
   Target,
   TrendingUp,
+  Search,
+  Phone,
+  UserPlus,
 } from 'lucide-react';
 import {
-  PIPELINE_STAGES,
-  PIPELINE_DEALS,
-  type Deal,
-  type DealStage,
-  type LeadFilter,
+  LEAD_PIPELINE_STAGES,
   type LeadCard,
+  type LeadPipelineStatus,
   LEAD_FILTERS,
+  type LeadFilter,
 } from '@/data/crmData';
-import NewDealModal from '@/components/crm/NewDealModal';
-
-// ─── Shared Primitives (reused from CRMView aesthetic) ───────────────────────
+import { useAgency } from '@/context/AgencyContext';
+import LeadDetailModal from '@/components/crm/LeadDetailModal';
 
 function SourceTag({ source }: { source: string }) {
   const colorMap: Record<string, string> = {
@@ -30,6 +28,7 @@ function SourceTag({ source }: { source: string }) {
     Referral: 'bg-[#7c3aed]/20 text-[#a78bfa] border-[#7c3aed]/30',
     'Cold Call': 'bg-[#f97316]/20 text-[#fb923c] border-[#f97316]/30',
     Twitter: 'bg-[#1da1f2]/20 text-[#7dd3fc] border-[#1da1f2]/30',
+    Website: 'bg-[#10b981]/20 text-[#34d399] border-[#10b981]/30',
   };
   return (
     <span
@@ -42,450 +41,417 @@ function SourceTag({ source }: { source: string }) {
   );
 }
 
-function RatingDots({ rating }: { rating: 1 | 2 | 3 | 4 | 5 }) {
-  const colors = ['#ef4444', '#f97316', '#fbbf24', '#00e676', '#00e676'];
-  return (
-    <div className="flex items-center gap-1">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full transition-all"
-          style={{
-            backgroundColor: i < rating ? colors[rating - 1] : '#2a2a2a',
-            boxShadow: i < rating ? `0 0 4px ${colors[rating - 1]}80` : 'none',
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── Empty Column State ───────────────────────────────────────────────────────
-
 function EmptyColumnState({ stageLabel }: { stageLabel: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-10 px-4">
-      {/* Illustrative icon */}
-      <div className="relative w-14 h-14">
-        <div className="absolute inset-0 rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
-          <Target className="w-6 h-6 text-[#3a3a3a]" />
-        </div>
-        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
-          <span className="text-[10px] text-[#4b5563]">?</span>
-        </div>
+      <div className="w-14 h-14 rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center">
+        <Target className="w-6 h-6 text-[#3a3a3a]" />
       </div>
       <div className="text-center">
-        <p className="text-xs font-bold text-[#4b5563]">No Deals in</p>
+        <p className="text-xs font-bold text-[#4b5563]">No leads in</p>
         <p className="text-xs font-bold text-[#3a3a3a]">{stageLabel}</p>
       </div>
     </div>
   );
 }
 
-// ─── Deal Kanban Card ─────────────────────────────────────────────────────────
-
-interface DealCardProps {
-  deal: Deal;
-  stageColor: string;
-  onStageChange: (id: string, newStage: DealStage) => void;
-  isDragging: boolean;
-  onDragStart: (id: string) => void;
-}
-
-function DealCard({ deal, stageColor, onStageChange, isDragging, onDragStart }: DealCardProps) {
-  const [showStagePicker, setShowStagePicker] = useState(false);
-
-  return (
-    <div
-      draggable
-      onDragStart={() => onDragStart(deal.id)}
-      className={`group relative bg-[#111111] border rounded-xl p-3.5 flex flex-col gap-2.5 transition-all duration-200 cursor-grab active:cursor-grabbing select-none ${
-        isDragging
-          ? 'opacity-40 scale-95'
-          : 'hover:border-[#333] hover:shadow-lg hover:shadow-black/50 hover:-translate-y-0.5'
-      } border-[#1e1e1e]`}
-    >
-      {/* Top: Grip + Avatar + Link */}
-      <div className="flex items-start gap-2">
-        {/* Drag handle */}
-        <GripVertical className="w-3.5 h-3.5 text-[#3a3a3a] mt-0.5 shrink-0 group-hover:text-[#555] transition-colors" />
-
-        <div className="flex-1 flex items-start justify-between gap-1">
-          {/* Avatar */}
-          <div className="flex items-start gap-2">
-            <div
-              className={`w-8 h-8 rounded-lg ${deal.avatarColor} flex items-center justify-center text-white font-black text-[11px] shrink-0 shadow-sm ring-1 ring-black`}
-            >
-              {deal.avatarInitials}
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-white leading-tight truncate max-w-[130px]">
-                {deal.name}
-              </p>
-              <p className="text-[10px] text-[#6b7280] leading-snug mt-0.5 line-clamp-2 max-w-[130px]">
-                {deal.title}
-              </p>
-            </div>
-          </div>
-
-          {/* Expand icon */}
-          <button
-            aria-label="View deal"
-            className="w-6 h-6 rounded-md bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-[#6b7280] hover:text-white hover:border-[#444] transition-all opacity-0 group-hover:opacity-100 shrink-0"
-          >
-            <ArrowUpRight className="w-3 h-3" />
-          </button>
-        </div>
-      </div>
-
-      {/* Deal Value Badge */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2.5 py-1">
-          <TrendingUp className="w-3 h-3 text-[#00e676]" />
-          <span className="text-xs font-black text-white font-mono">
-            ${deal.dealValue.toLocaleString()}
-          </span>
-        </div>
-        <RatingDots rating={deal.rating} />
-      </div>
-
-      {/* Sources */}
-      <div className="flex flex-wrap gap-1">
-        {deal.sources.map((s) => (
-          <SourceTag key={s} source={s} />
-        ))}
-      </div>
-
-      {/* Close Date + Priority */}
-      <div className="flex items-center justify-between pt-1 border-t border-[#1a1a1a]">
-        <div className="flex items-center gap-1 text-[10px] text-[#4b5563]">
-          <Calendar className="w-2.5 h-2.5" />
-          <span>{new Date(deal.expectedCloseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-        </div>
-        <span className="text-[10px] font-semibold text-[#6b7280] capitalize">
-          {deal.priority.toLowerCase()}
-        </span>
-      </div>
-
-      {/* Stage mover dropdown */}
-      <div className="relative">
-        <button
-          onClick={() => setShowStagePicker((v) => !v)}
-          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#0d0d0d] border border-[#1e1e1e] hover:border-[#333] transition-colors text-[10px] font-semibold text-[#6b7280] hover:text-white"
-        >
-          <span>Move to stage</span>
-          <ChevronDown className="w-3 h-3" />
-        </button>
-
-        {showStagePicker && (
-          <div className="absolute bottom-full left-0 right-0 mb-1 bg-[#111] border border-[#222] rounded-xl overflow-hidden shadow-2xl shadow-black/60 z-30 animate-in fade-in slide-in-from-bottom-2 duration-150">
-            {PIPELINE_STAGES.filter((s) => s.id !== deal.stage).map((s) => (
-              <button
-                key={s.id}
-                onClick={() => {
-                  onStageChange(deal.id, s.id);
-                  setShowStagePicker(false);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#1a1a1a] transition-colors text-left"
-              >
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.badgeColor} ${s.textColor}`}
-                >
-                  {s.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Kanban Column ────────────────────────────────────────────────────────────
-
-interface KanbanColumnProps {
-  stageId: DealStage;
-  label: string;
-  badgeColor: string;
-  textColor: string;
-  borderColor: string;
-  glowColor: string;
-  deals: Deal[];
-  dragOverStage: DealStage | null;
-  draggingId: string | null;
-  onDragStart: (id: string) => void;
-  onDrop: (stage: DealStage) => void;
-  onDragOver: (stage: DealStage) => void;
-  onDragLeave: () => void;
-  onStageChange: (id: string, newStage: DealStage) => void;
-  totalValue: number;
-}
-
-function KanbanColumn({
-  stageId,
-  label,
-  badgeColor,
-  textColor,
-  borderColor,
-  glowColor,
-  deals,
-  dragOverStage,
-  draggingId,
-  onDragStart,
-  onDrop,
-  onDragOver,
-  onDragLeave,
-  onStageChange,
-  totalValue,
-}: KanbanColumnProps) {
-  const isOver = dragOverStage === stageId;
-
-  return (
-    <div
-      className="flex flex-col gap-3 min-w-[240px] flex-1"
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver(stageId);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop(stageId);
-      }}
-      onDragLeave={onDragLeave}
-    >
-      {/* Column Header */}
-      <div
-        className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border transition-all ${
-          isOver
-            ? `border-[${glowColor}] bg-[${glowColor}]/5`
-            : `${borderColor} bg-[#0d0d0d]`
-        }`}
-        style={isOver ? { borderColor: glowColor, backgroundColor: `${glowColor}10` } : undefined}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Stage badge pill */}
-          <span
-            className={`px-2.5 py-0.5 rounded-full text-[11px] font-black shrink-0 ${badgeColor} ${textColor}`}
-          >
-            {label}
-          </span>
-          {/* Count badge */}
-          <span className="w-5 h-5 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] font-bold text-[#9ca3af] flex items-center justify-center shrink-0">
-            {deals.length}
-          </span>
-        </div>
-
-        {/* Column total value */}
-        {deals.length > 0 && (
-          <span className="text-[10px] font-bold text-[#4b5563] font-mono shrink-0 ml-2">
-            ${totalValue.toLocaleString()}
-          </span>
-        )}
-      </div>
-
-      {/* Drop zone + cards */}
-      <div
-        className={`flex-1 flex flex-col gap-2.5 min-h-[120px] p-2 rounded-xl border border-dashed transition-all duration-200 ${
-          isOver
-            ? 'border-[#444] bg-[#111]'
-            : 'border-[#1a1a1a] bg-transparent'
-        }`}
-      >
-        {deals.length === 0 ? (
-          <EmptyColumnState stageLabel={label} />
-        ) : (
-          deals.map((deal) => (
-            <DealCard
-              key={deal.id}
-              deal={deal}
-              stageColor={glowColor}
-              isDragging={draggingId === deal.id}
-              onDragStart={onDragStart}
-              onStageChange={onStageChange}
-            />
-          ))
-        )}
-
-        {/* Drag-over visual hint */}
-        {isOver && draggingId && (
-          <div
-            className="h-12 rounded-lg border-2 border-dashed flex items-center justify-center text-[11px] text-[#4b5563] transition-all"
-            style={{ borderColor: `${glowColor}60` }}
-          >
-            Drop here
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Pipeline Summary Bar ─────────────────────────────────────────────────────
-
-function PipelineSummary({ deals }: { deals: Deal[] }) {
-  const totalValue = deals.reduce((a, d) => a + d.dealValue, 0);
-  const wonDeals = deals.filter((d) => d.stage === 'closed_won');
-  const wonValue = wonDeals.reduce((a, d) => a + d.dealValue, 0);
-  const winRate = deals.length ? Math.round((wonDeals.length / deals.length) * 100) : 0;
-
-  return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl">
-      {[
-        { label: 'Total Pipeline', value: `$${totalValue.toLocaleString()}`, accent: 'text-white' },
-        { label: 'Closed Won', value: `$${wonValue.toLocaleString()}`, accent: 'text-[#00e676]' },
-        { label: 'Win Rate', value: `${winRate}%`, accent: 'text-[#38bdf8]' },
-        { label: 'Total Deals', value: `${deals.length}`, accent: 'text-[#fbbf24]' },
-      ].map((s, i) => (
-        <React.Fragment key={s.label}>
-          {i > 0 && <div className="w-px h-6 bg-[#1e1e1e]" />}
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-[#4b5563] uppercase tracking-widest font-bold">
-              {s.label}
-            </span>
-            <span className={`text-base font-black leading-none ${s.accent}`}>{s.value}</span>
-          </div>
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
-// ─── Main Sales Pipeline View ─────────────────────────────────────────────────
-
-export interface SalesPipelineViewProps {
+interface SalesPipelineViewProps {
   initialPreselectedLead?: LeadCard | null;
 }
 
 export default function SalesPipelineView({ initialPreselectedLead }: SalesPipelineViewProps) {
-  const [deals, setDeals] = useState<Deal[]>(PIPELINE_DEALS);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
-  const [activeFilter, setActiveFilter] = useState<LeadFilter | 'All'>('All');
-  const [isNewDealOpen, setIsNewDealOpen] = useState(Boolean(initialPreselectedLead));
-  const [preselectedLead, setPreselectedLead] = useState<LeadCard | null>(initialPreselectedLead || null);
+  const {
+    leads,
+    updateLead,
+    addLead,
+    deleteLead,
+    convertLeadToClient,
+    createDocument,
+    createProjectForClient,
+    clients,
+  } = useAgency();
 
-  const handleCreateDeal = (newDeal: Deal) => {
-    setDeals([newDeal, ...deals]);
+  const [search, setSearch] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState<LeadFilter | 'All'>('All');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<LeadPipelineStatus | null>(null);
+  const [detailLead, setDetailLead] = useState<LeadCard | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formCompany, setFormCompany] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formValue, setFormValue] = useState('50000');
+
+  useEffect(() => {
+    if (initialPreselectedLead) {
+      const live = leads.find((l) => l.id === initialPreselectedLead.id) || initialPreselectedLead;
+      setDetailLead(live);
+      setDetailOpen(true);
+    }
+  }, [initialPreselectedLead, leads]);
+
+  const filtered = useMemo(() => {
+    return leads.filter((l) => {
+      if (priorityFilter !== 'All' && l.priority !== priorityFilter) return false;
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        l.name.toLowerCase().includes(q) ||
+        (l.company || '').toLowerCase().includes(q) ||
+        (l.email || '').toLowerCase().includes(q) ||
+        (l.phone || '').toLowerCase().includes(q)
+      );
+    });
+  }, [leads, search, priorityFilter]);
+
+  const byStage = useMemo(() => {
+    const map: Record<LeadPipelineStatus, LeadCard[]> = {
+      New: [],
+      Contacted: [],
+      Qualified: [],
+      Proposal: [],
+      Converted: [],
+      Lost: [],
+    };
+    for (const lead of filtered) {
+      const stage = (lead.status || 'New') as LeadPipelineStatus;
+      (map[stage] || map.New).push(lead);
+    }
+    return map;
+  }, [filtered]);
+
+  const moveLead = (id: string, stage: LeadPipelineStatus) => {
+    const lead = leads.find((l) => l.id === id);
+    if (!lead || lead.status === stage) return;
+    updateLead({ ...lead, status: stage });
+    if (stage === 'Converted') {
+      convertLeadToClient(id);
+    }
   };
 
-  // Filter deals by priority
-  const filteredDeals =
-    activeFilter === 'All' ? deals : deals.filter((d) => d.priority === activeFilter);
-
-  // Group filtered deals by stage
-  const dealsByStage = (stageId: DealStage) =>
-    filteredDeals.filter((d) => d.stage === stageId);
-
-  const columnTotalValue = (stageId: DealStage) =>
-    dealsByStage(stageId).reduce((acc, d) => acc + d.dealValue, 0);
-
-  // Drag handlers
-  const handleDragStart = (id: string) => setDraggingId(id);
-
-  const handleDrop = (targetStage: DealStage) => {
-    if (!draggingId) return;
-    setDeals((prev) =>
-      prev.map((d) => (d.id === draggingId ? { ...d, stage: targetStage } : d))
-    );
+  const onDrop = (stage: LeadPipelineStatus) => {
+    if (draggingId) moveLead(draggingId, stage);
     setDraggingId(null);
     setDragOverStage(null);
   };
 
-  const handleStageChange = (dealId: string, newStage: DealStage) => {
-    setDeals((prev) =>
-      prev.map((d) => (d.id === dealId ? { ...d, stage: newStage } : d))
-    );
+  const totalPipeline = filtered
+    .filter((l) => l.status !== 'Lost' && l.status !== 'Converted')
+    .reduce((a, l) => a + (l.estimatedValue || 0), 0);
+  const wonValue = filtered
+    .filter((l) => l.status === 'Converted')
+    .reduce((a, l) => a + (l.estimatedValue || 0), 0);
+  const winRate = filtered.length
+    ? Math.round((filtered.filter((l) => l.status === 'Converted').length / filtered.length) * 100)
+    : 0;
+
+  const handleAddLead = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) return;
+    const initials = formName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+    const lead: LeadCard = {
+      id: `lead-${Date.now()}`,
+      name: formName.trim(),
+      company: formCompany.trim() || undefined,
+      title: formCompany ? `Contact at ${formCompany}` : 'Prospect',
+      email: formEmail.trim() || undefined,
+      phone: formPhone.trim() || undefined,
+      avatarInitials: initials || 'LD',
+      avatarColor: 'bg-[#7c3aed]',
+      sources: ['Website'],
+      priority: 'Hot Clients',
+      rating: 4,
+      status: 'New',
+      estimatedValue: parseFloat(formValue) || 35000,
+      createdDate: new Date().toISOString().slice(0, 10),
+    };
+    addLead(lead);
+    setShowAdd(false);
+    setFormName('');
+    setFormCompany('');
+    setFormPhone('');
+    setFormEmail('');
+    setDetailLead(lead);
+    setDetailOpen(true);
   };
 
   return (
     <div className="space-y-5">
-
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-white tracking-tight">Sales Pipeline</h2>
-          <p className="text-xs text-[#4b5563] mt-0.5">
-            Drag cards between columns or use the stage selector to move deals
+          <h2 className="text-xl font-black text-white tracking-tight">Sales Pipeline</h2>
+          <p className="text-xs text-[#9ca3af] mt-0.5">
+            Lead stages as live kanban — drag to advance, convert wins clients
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowAdd(true)}
+          className="px-4 py-2 rounded-xl bg-[#b8ff00] text-black text-xs font-black flex items-center gap-1.5 shadow-md shadow-[#b8ff00]/20"
+        >
+          <Plus className="w-4 h-4 stroke-[3]" /> Add lead
+        </button>
+      </div>
 
-        <div className="flex items-center gap-2">
-          {/* Priority filter pills */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {(['All', ...LEAD_FILTERS.filter((f) => f !== 'All')] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setActiveFilter(f as LeadFilter | 'All')}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all border ${
-                  activeFilter === f
-                    ? 'bg-white text-black border-white'
-                    : 'bg-transparent text-[#6b7280] border-[#1e1e1e] hover:border-[#333] hover:text-white'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl">
+        {[
+          { label: 'Open pipeline', value: `$${totalPipeline.toLocaleString()}`, accent: 'text-white' },
+          { label: 'Won value', value: `$${wonValue.toLocaleString()}`, accent: 'text-[#00e676]' },
+          { label: 'Win rate', value: `${winRate}%`, accent: 'text-[#38bdf8]' },
+          { label: 'Leads', value: `${filtered.length}`, accent: 'text-[#fbbf24]' },
+        ].map((s, i) => (
+          <React.Fragment key={s.label}>
+            {i > 0 && <div className="w-px h-6 bg-[#1e1e1e]" />}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-[#4b5563] uppercase tracking-widest font-bold">{s.label}</span>
+              <span className={`text-base font-black leading-none ${s.accent}`}>{s.value}</span>
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
 
-          {/* Add Deal */}
+      <div className="flex flex-wrap items-center gap-3 bg-[#111] border border-[#222] rounded-xl p-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search pipeline…"
+            className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-[#b8ff00] rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none"
+          />
+        </div>
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value as LeadFilter | 'All')}
+          className="bg-[#181818] border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white outline-none"
+        >
+          <option value="All">All priorities</option>
+          {LEAD_FILTERS.filter((f) => f !== 'All').map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#111] py-16 text-center">
+          <Target className="w-10 h-10 text-[#3a3a3a] mx-auto mb-3" />
+          <p className="text-sm font-bold text-[#6b7280]">No leads match this filter</p>
+          <p className="text-xs text-[#4b5563] mt-1">Add a lead or clear search to populate the pipeline</p>
           <button
-            onClick={() => {
-              setPreselectedLead(null);
-              setIsNewDealOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00e676] hover:bg-[#00c764] text-black text-xs font-black transition-all shadow-md shadow-[#00e676]/20"
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="mt-4 px-4 py-2 rounded-xl bg-[#b8ff00] text-black text-xs font-bold"
           >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            Add Deal
+            Add first lead
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {LEAD_PIPELINE_STAGES.map((stage) => {
+            const column = byStage[stage.id] || [];
+            const colValue = column.reduce((a, l) => a + (l.estimatedValue || 0), 0);
+            const isOver = dragOverStage === stage.id;
+            return (
+              <div
+                key={stage.id}
+                className="flex flex-col gap-3 min-w-[240px] flex-1"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverStage(stage.id);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  onDrop(stage.id);
+                }}
+                onDragLeave={() => setDragOverStage(null)}
+              >
+                <div
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${stage.borderColor} bg-[#0d0d0d]`}
+                  style={isOver ? { borderColor: stage.glowColor, backgroundColor: `${stage.glowColor}10` } : undefined}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black shrink-0 ${stage.badgeColor} ${stage.textColor}`}>
+                      {stage.label}
+                    </span>
+                    <span className="w-5 h-5 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] font-bold text-[#9ca3af] flex items-center justify-center">
+                      {column.length}
+                    </span>
+                  </div>
+                  {column.length > 0 && (
+                    <span className="text-[10px] font-bold text-[#4b5563] font-mono">${colValue.toLocaleString()}</span>
+                  )}
+                </div>
 
-      {/* ── Pipeline Summary ────────────────────────────────────────────────── */}
-      <PipelineSummary deals={deals} />
-
-      {/* ── Kanban Board ────────────────────────────────────────────────────── */}
-      <div
-        className="overflow-x-auto pb-4"
-        onDragEnd={() => {
-          setDraggingId(null);
-          setDragOverStage(null);
-        }}
-      >
-        <div className="flex gap-3 min-w-max">
-          {PIPELINE_STAGES.map((stage) => (
-            <KanbanColumn
-              key={stage.id}
-              stageId={stage.id}
-              label={stage.label}
-              badgeColor={stage.badgeColor}
-              textColor={stage.textColor}
-              borderColor={stage.borderColor}
-              glowColor={stage.glowColor}
-              deals={dealsByStage(stage.id)}
-              totalValue={columnTotalValue(stage.id)}
-              dragOverStage={dragOverStage}
-              draggingId={draggingId}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-              onDragOver={setDragOverStage}
-              onDragLeave={() => setDragOverStage(null)}
-              onStageChange={handleStageChange}
-            />
-          ))}
+                <div
+                  className={`flex-1 flex flex-col gap-2.5 min-h-[120px] p-2 rounded-xl border border-dashed ${
+                    isOver ? 'border-[#444] bg-[#111]' : 'border-[#1a1a1a]'
+                  }`}
+                >
+                  {column.length === 0 ? (
+                    <EmptyColumnState stageLabel={stage.label} />
+                  ) : (
+                    column.map((lead) => (
+                      <div
+                        key={lead.id}
+                        draggable
+                        onDragStart={() => setDraggingId(lead.id)}
+                        onDragEnd={() => {
+                          setDraggingId(null);
+                          setDragOverStage(null);
+                        }}
+                        className={`group relative bg-[#111111] border border-[#1e1e1e] rounded-xl p-3.5 flex flex-col gap-2.5 cursor-grab active:cursor-grabbing ${
+                          draggingId === lead.id ? 'opacity-40 scale-95' : 'hover:border-[#333] hover:-translate-y-0.5'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <GripVertical className="w-3.5 h-3.5 text-[#3a3a3a] mt-0.5 shrink-0" />
+                          <div className="flex-1 flex items-start justify-between gap-1">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <div
+                                className={`w-8 h-8 rounded-lg ${lead.avatarColor} flex items-center justify-center text-white font-black text-[11px] shrink-0`}
+                              >
+                                {lead.avatarInitials}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-white truncate">{lead.name}</p>
+                                <p className="text-[10px] text-[#6b7280] line-clamp-2">{lead.company || lead.title}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDetailLead(lead);
+                                setDetailOpen(true);
+                              }}
+                              className="w-6 h-6 rounded-md bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-[#6b7280] hover:text-white opacity-0 group-hover:opacity-100"
+                            >
+                              <ArrowUpRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-2.5 py-1">
+                            <TrendingUp className="w-3 h-3 text-[#00e676]" />
+                            <span className="text-xs font-black text-white font-mono">
+                              ${(lead.estimatedValue || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          {lead.phone && (
+                            <a
+                              href={`tel:${lead.phone.replace(/[^0-9+]/g, '')}`}
+                              className="text-[#2dd4bf] hover:text-[#5eead4]"
+                              title="Call"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {lead.sources.slice(0, 2).map((s) => (
+                            <SourceTag key={s} source={s} />
+                          ))}
+                        </div>
+                        <div className="flex gap-1.5 pt-1 border-t border-[#1a1a1a]">
+                          <button
+                            type="button"
+                            onClick={() => convertLeadToClient(lead.id, { createProject: true })}
+                            className="flex-1 text-[10px] font-bold py-1.5 rounded-lg bg-[#141d18] border border-[#1e2a22] text-[#2dd4bf] flex items-center justify-center gap-1"
+                          >
+                            <UserPlus className="w-3 h-3" /> Client+Project
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
 
-      {/* New Deal Modal */}
-      <NewDealModal
-        isOpen={isNewDealOpen}
-        onClose={() => {
-          setIsNewDealOpen(false);
-          setPreselectedLead(null);
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <form
+            onSubmit={handleAddLead}
+            className="w-full max-w-md rounded-2xl bg-[#111] border border-[#222] p-5 space-y-3 shadow-2xl"
+          >
+            <h3 className="text-sm font-black text-white">New pipeline lead</h3>
+            {[
+              ['Name *', formName, setFormName, 'text'],
+              ['Company', formCompany, setFormCompany, 'text'],
+              ['Email', formEmail, setFormEmail, 'email'],
+              ['Phone', formPhone, setFormPhone, 'tel'],
+              ['Est. value', formValue, setFormValue, 'number'],
+            ].map(([label, val, set, type]) => (
+              <label key={label as string} className="block">
+                <span className="text-[10px] uppercase font-bold text-[#6b7280]">{label as string}</span>
+                <input
+                  type={type as string}
+                  value={val as string}
+                  onChange={(e) => (set as (v: string) => void)(e.target.value)}
+                  className="mt-1 w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#b8ff00]"
+                />
+              </label>
+            ))}
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowAdd(false)} className="px-3 py-2 text-xs text-[#9ca3af]">
+                Cancel
+              </button>
+              <button type="submit" className="px-4 py-2 rounded-xl bg-[#b8ff00] text-black text-xs font-bold">
+                Create
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <LeadDetailModal
+        lead={detailLead ? leads.find((l) => l.id === detailLead.id) || detailLead : null}
+        isOpen={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        queue={filtered}
+        onOpenLead={(l) => setDetailLead(l)}
+        onConvertToClient={(l) => convertLeadToClient(l.id, { createProject: true })}
+        onConvertToDeal={(l) => {
+          updateLead({ ...l, status: 'Proposal' });
         }}
-        onAddDeal={handleCreateDeal}
-        initialLead={preselectedLead}
+        onCreateQuote={(l) => {
+          let client = clients.find((c) => c.leadId === l.id || c.email === l.email);
+          if (!client) client = convertLeadToClient(l.id) || undefined;
+          createDocument({
+            docType: 'quotation',
+            clientId: client?.id,
+            leadId: l.id,
+            title: `Quote — ${l.company || l.name}`,
+            amount: l.estimatedValue || 500000,
+          });
+        }}
+        onCreateProject={(l) => {
+          let client = clients.find((c) => c.leadId === l.id || c.email === l.email);
+          if (!client) client = convertLeadToClient(l.id) || undefined;
+          if (client) {
+            createProjectForClient(client.id, {
+              title: `${client.company} — Engagement`,
+              budget: l.estimatedValue || 500000,
+            });
+          }
+        }}
+        onDelete={(l) => {
+          if (confirm(`Delete lead ${l.name}?`)) {
+            deleteLead(l.id);
+            setDetailOpen(false);
+          }
+        }}
       />
     </div>
   );

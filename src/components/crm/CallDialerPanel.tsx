@@ -37,7 +37,9 @@ function fmtDuration(sec: number) {
 }
 
 export default function CallDialerPanel({ lead, queue = [], onOpenLead }: CallDialerPanelProps) {
-  const { logCall, addLeadActivity, getLeadActivities } = useAgency();
+  const { logCall, addLeadActivity, getLeadActivities, updateLeadActivity, deleteLeadActivity } = useAgency();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
   const [dialing, setDialing] = useState(false);
   const [live, setLive] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -223,11 +225,25 @@ export default function CallDialerPanel({ lead, queue = [], onOpenLead }: CallDi
                   {a.type}
                   {a.outcome ? ` · ${a.outcome.replace('_', ' ')}` : ''}
                 </span>
-                <span className="text-[9px] font-mono text-[#6b7280]">
-                  {new Date(a.createdAt).toLocaleString()}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-mono text-[#6b7280]">
+                    {new Date(a.createdAt).toLocaleString()}
+                  </span>
+                  <button type="button" className="text-[9px] text-[#9ca3af] hover:text-white" onClick={() => { setEditingId(a.id); setEditText(a.content); }}>Edit</button>
+                  <button type="button" className="text-[9px] text-[#f87171] hover:text-red-400" onClick={() => { if (confirm('Delete this activity?')) deleteLeadActivity(a.id); }}>Del</button>
+                </div>
               </div>
-              <p className="text-[#e5e7eb]">{a.content}</p>
+              {editingId === a.id ? (
+                <div className="space-y-1.5">
+                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} className="w-full bg-[#0b1210] border border-[#1e2a22] rounded-lg p-2 text-[11px] text-white" />
+                  <div className="flex gap-2">
+                    <button type="button" className="text-[10px] text-[#2dd4bf] font-bold" onClick={() => { updateLeadActivity(a.id, { content: editText.trim() || a.content }); setEditingId(null); }}>Save</button>
+                    <button type="button" className="text-[10px] text-[#6b7280]" onClick={() => setEditingId(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[#e5e7eb]">{a.content}</p>
+              )}
               {typeof a.durationSec === 'number' && (
                 <p className="text-[10px] text-[#6b7280] mt-1">Duration {fmtDuration(a.durationSec)}</p>
               )}

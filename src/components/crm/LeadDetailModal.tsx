@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { LeadCard } from '@/data/crmData';
 import CallDialerPanel from '@/components/crm/CallDialerPanel';
+import { useAgency } from '@/context/AgencyContext';
+import { LEAD_PIPELINE_STAGES } from '@/data/crmData';
 
 interface LeadDetailModalProps {
   lead: LeadCard | null;
@@ -45,7 +47,44 @@ export default function LeadDetailModal({
   onOpenLead,
   onDelete,
 }: LeadDetailModalProps) {
+  const { updateLead, clients, projects, navigate, getLeadActivities } = useAgency();
+  const [editing, setEditing] = React.useState(false);
+  const [name, setName] = React.useState('');
+  const [company, setCompany] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [phone, setPhone] = React.useState('');
+  const [value, setValue] = React.useState('');
+  const [title, setTitle] = React.useState('');
+
+  React.useEffect(() => {
+    if (!lead) return;
+    setName(lead.name);
+    setCompany(lead.company || '');
+    setEmail(lead.email || '');
+    setPhone(lead.phone || '');
+    setValue(String(lead.estimatedValue || 0));
+    setTitle(lead.title || '');
+    setEditing(false);
+  }, [lead?.id]);
+
   if (!lead) return null;
+
+  const linkedClient = clients.find((c) => c.leadId === lead.id || (lead.email && c.email === lead.email));
+  const linkedProjects = linkedClient ? projects.filter((p) => p.clientId === linkedClient.id) : [];
+  const activityCount = getLeadActivities(lead.id).length;
+
+  const saveEdit = () => {
+    updateLead({
+      ...lead,
+      name: name.trim() || lead.name,
+      company: company.trim() || undefined,
+      email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
+      title: title.trim() || lead.title,
+      estimatedValue: parseFloat(value) || lead.estimatedValue,
+    });
+    setEditing(false);
+  };
 
   return (
     <SideDrawer
@@ -217,10 +256,10 @@ export default function LeadDetailModal({
               </div>
               <div className="min-w-0">
                 <span className="text-[10px] text-[#6b7280] block">Email</span>
-                <span className="text-white font-mono truncate block text-[11px]">
+                <a href={`mailto:${lead.email || ''}`} className="text-white font-mono truncate block text-[11px] hover:text-[#b8ff00]">
                   {lead.email ||
                     `${lead.name.toLowerCase().replace(/\s+/g, '')}@company.com`}
-                </span>
+                </a>
               </div>
             </div>
             <div className="flex items-center gap-2.5">
@@ -229,9 +268,9 @@ export default function LeadDetailModal({
               </div>
               <div className="min-w-0">
                 <span className="text-[10px] text-[#6b7280] block">Phone</span>
-                <span className="text-white font-mono truncate block text-[11px]">
+                <a href={`tel:${(lead.phone || '').replace(/[^0-9+]/g, '')}`} className="text-white font-mono truncate block text-[11px] hover:text-[#38bdf8]">
                   {lead.phone || '+1 (415) 555-0188'}
-                </span>
+                </a>
               </div>
             </div>
           </div>
@@ -253,6 +292,70 @@ export default function LeadDetailModal({
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-2 bg-[#141d18] border border-[#1e2a22] rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Pipeline stage</h3>
+            <button type="button" onClick={() => setEditing((v) => !v)} className="text-[10px] font-bold text-[#b8ff00]">
+              {editing ? 'Cancel edit' : 'Edit lead'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {LEAD_PIPELINE_STAGES.map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => updateLead({ ...lead, status: st.id })}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                  (lead.status || 'New') === st.id
+                    ? st.badgeColor + ' ' + st.textColor + ' border-transparent'
+                    : 'border-[#1e2a22] text-[#6b7280] hover:text-white'
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+          {editing && (
+            <div className="grid sm:grid-cols-2 gap-2 pt-2 border-t border-[#1e2a22]">
+              {[
+                ['Name', name, setName],
+                ['Title', title, setTitle],
+                ['Company', company, setCompany],
+                ['Email', email, setEmail],
+                ['Phone', phone, setPhone],
+                ['Est. value', value, setValue],
+              ].map(([label, val, set]) => (
+                <label key={label as string} className="block">
+                  <span className="text-[9px] uppercase text-[#6b7280] font-bold">{label as string}</span>
+                  <input
+                    value={val as string}
+                    onChange={(e) => (set as React.Dispatch<React.SetStateAction<string>>)(e.target.value)}
+                    className="mt-0.5 w-full bg-[#0b1210] border border-[#1e2a22] rounded-lg px-2 py-1.5 text-[11px] text-white outline-none focus:border-[#b8ff00]"
+                  />
+                </label>
+              ))}
+              <button type="button" onClick={saveEdit} className="sm:col-span-2 mt-1 py-2 rounded-xl bg-[#b8ff00] text-black text-xs font-bold">
+                Save changes
+              </button>
+            </div>
+          )}
+          <div className="pt-2 border-t border-[#1e2a22] text-[11px] text-[#9ca3af] space-y-1">
+            <p>{activityCount} logged activities · dialer timeline below</p>
+            {linkedClient ? (
+              <button type="button" className="text-[#2dd4bf] font-semibold hover:underline" onClick={() => navigate({ tab: 'clients', focus: { kind: 'client', id: linkedClient.id } })}>
+                Linked client: {linkedClient.company}
+              </button>
+            ) : (
+              <p>Not converted to client yet</p>
+            )}
+            {linkedProjects.length > 0 && (
+              <button type="button" className="block text-[#a78bfa] font-semibold hover:underline" onClick={() => navigate({ tab: 'projects', focus: { kind: 'project', id: linkedProjects[0].id } })}>
+                Project: {linkedProjects[0].title}
+              </button>
+            )}
           </div>
         </div>
 

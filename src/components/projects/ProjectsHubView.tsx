@@ -53,6 +53,12 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
     setProjects(agencyProjects);
   }, [agencyProjects]);
 
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+  const [activeMainView, setActiveMainView] = useState<'hub' | 'calendar'>('hub');
+  const [hubSearch, setHubSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'planning' | 'active' | 'on_hold' | 'completed' | 'archived'>('all');
+  const [showArchived, setShowArchived] = useState(false);
+
   const filteredProjects = projects.filter((p) => {
     if (!showArchived && (p.archived || p.status === 'archived')) return false;
     if (statusFilter !== 'all' && (p.status || 'active') !== statusFilter) return false;
@@ -70,11 +76,6 @@ export default function ProjectsHubView({ onOpenCreateDocument }: ProjectsHubVie
     const found = agencyProjects.find((p) => p.id === id) || projects.find((p) => p.id === id);
     if (found) setSelectedProject(found);
   }, [consumeFocus, agencyProjects, projects]);
-  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
-  const [activeMainView, setActiveMainView] = useState<'hub' | 'calendar'>('hub');
-  const [hubSearch, setHubSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'planning' | 'active' | 'on_hold' | 'completed' | 'archived'>('all');
-  const [showArchived, setShowArchived] = useState(false);
 
   const [tasks, setTasks] = useState(TODAY_TASKS);
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
