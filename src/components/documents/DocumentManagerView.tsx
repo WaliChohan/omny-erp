@@ -23,12 +23,14 @@ import {
   X,
 } from 'lucide-react';
 import { useDocumentStore } from '@/context/DocumentContext';
+import { useAgency } from '@/context/AgencyContext';
 import { ERPDocument, DocumentType, DocumentStatus } from '@/types/documentEngine';
 import DocumentBuilderModal from './DocumentBuilderModal';
 import DocumentLayout from './templates/DocumentLayout';
 import { exportDocumentToPDF } from './pdf/pdfExporter';
 
 export default function DocumentManagerView() {
+  const { clients, projects, navigate } = useAgency();
   const {
     documents,
     activeDocument,
@@ -43,6 +45,8 @@ export default function DocumentManagerView() {
   const [selectedType, setSelectedType] = useState<DocumentType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | 'all'>('all');
+  const [clientFilter, setClientFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
 
   // Modals
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
@@ -59,6 +63,11 @@ export default function DocumentManagerView() {
   const filteredDocuments = documents.filter((doc) => {
     if (selectedType !== 'all' && doc.type !== selectedType) return false;
     if (statusFilter !== 'all' && doc.status !== statusFilter) return false;
+    if (clientFilter !== 'all') {
+      const c = clients.find((x) => x.id === clientFilter);
+      if (doc.clientId !== clientFilter && doc.clientCompany !== c?.company) return false;
+    }
+    if (projectFilter !== 'all' && doc.projectId !== projectFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (
@@ -146,6 +155,24 @@ export default function DocumentManagerView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150 text-[#f3f4f6]">
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className="bg-[#141d18] border border-[#223328] text-xs text-white rounded-lg px-2.5 py-1.5 outline-none">
+          <option value="all">All clients</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>{c.company}</option>
+          ))}
+        </select>
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="bg-[#141d18] border border-[#223328] text-xs text-white rounded-lg px-2.5 py-1.5 outline-none">
+          <option value="all">All projects</option>
+          {projects
+            .filter((p) => clientFilter === 'all' || p.clientId === clientFilter)
+            .map((p) => (
+              <option key={p.id} value={p.id}>{p.title}</option>
+            ))}
+        </select>
+        <button type="button" onClick={() => navigate({ tab: 'clients' })} className="text-[11px] font-bold text-[#2dd4bf]">Open clients</button>
+      </div>
+
       {/* Top Title & Header Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

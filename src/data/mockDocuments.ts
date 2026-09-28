@@ -3,13 +3,15 @@ import { ERPDocument } from '@/types/documentEngine';
 export const INITIAL_DOCUMENTS: ERPDocument[] = [
   {
     id: 'doc-prop-001',
+    clientId: 'cli-1',
+    projectId: 'p-1',
     docNumber: 'PROP-2026-9921',
     type: 'proposal',
     subtype: 'standard',
     status: 'accepted',
-    clientName: 'Operation Director',
-    clientCompany: 'Pakistan Chiller House',
-    clientEmail: 'procurement@pakistanchillerhouse.com',
+    clientName: 'James Porter',
+    clientCompany: 'CoolAir Pros',
+    clientEmail: 'james@coolairpros.com',
     clientPhone: '+92 300 8459102',
     clientAddress: 'Plot 45, Industrial Zone Sector I-9, Islamabad & Lahore Warehouses',
     clientTaxId: 'PK-NTN-8849201',

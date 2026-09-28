@@ -61,6 +61,7 @@ export interface ERPDocument {
   
   // Client Info
   clientId?: string;
+  projectId?: string;
   clientName: string;
   clientCompany: string;
   clientEmail: string;

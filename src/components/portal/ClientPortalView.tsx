@@ -2,12 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  MOCK_CLIENT_PROFILE,
-  MOCK_CLIENT_PROJECTS,
-  MOCK_CLIENT_INVOICES,
-  MOCK_SHARED_FILES,
-  MOCK_SUPPORT_TICKETS,
-  MOCK_ACTIVITY_FEED,
   ClientProfile,
   ClientProject,
   ClientInvoice,
@@ -15,6 +9,7 @@ import {
   SupportTicket,
   ActivityEvent,
 } from '@/data/portalData';
+import { useAgency } from '@/context/AgencyContext';
 
 import ClientPortalHeader from './ClientPortalHeader';
 import InvoiceModal from './InvoiceModal';
@@ -51,12 +46,33 @@ interface ClientPortalViewProps {
 }
 
 export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps) {
-  const [profile, setProfile] = useState<ClientProfile>(MOCK_CLIENT_PROFILE);
-  const [projects, setProjects] = useState<ClientProject[]>(MOCK_CLIENT_PROJECTS);
-  const [invoices, setInvoices] = useState<ClientInvoice[]>(MOCK_CLIENT_INVOICES);
-  const [files, setFiles] = useState<ClientSharedFile[]>(MOCK_SHARED_FILES);
-  const [tickets, setTickets] = useState<SupportTicket[]>(MOCK_SUPPORT_TICKETS);
-  const [activities] = useState<ActivityEvent[]>(MOCK_ACTIVITY_FEED);
+  const {
+    clients,
+    portalClientId,
+    setPortalClientId,
+    getPortalBundle,
+    addTicket,
+    replyToTicket,
+    recordPayment,
+    tickets: storeTickets,
+  } = useAgency();
+
+  const bundle = useMemo(
+    () => getPortalBundle(portalClientId),
+    [getPortalBundle, portalClientId, storeTickets, clients]
+  );
+  const profile = bundle.profile;
+  const projects = bundle.projects;
+  const [invoices, setInvoices] = useState<ClientInvoice[]>([]);
+  const [files, setFiles] = useState<ClientSharedFile[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const activities = bundle.activities;
+
+  useEffect(() => {
+    setInvoices(bundle.invoices);
+    setFiles(bundle.files);
+    setTickets(bundle.tickets);
+  }, [bundle]);
 
   const [activeTab, setActiveTab] = useState<string>('overview');
 
@@ -70,178 +86,103 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
   const [invoiceSearch, setInvoiceSearch] = useState('');
 
   // Projects tab state
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(MOCK_CLIENT_PROJECTS[0].id);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
   // Support tab state
-  const [selectedTicketId, setSelectedTicketId] = useState<string>(MOCK_SUPPORT_TICKETS[0].id);
+  const [selectedTicketId, setSelectedTicketId] = useState<string>('');
   const [ticketReplyText, setTicketReplyText] = useState('');
 
   // Files filter
   const [fileFilter, setFileFilter] = useState<string>('All');
 
-  // Load from localStorage if present
   useEffect(() => {
-    try {
-      const savedInvoices = localStorage.getItem('omnysync_portal_invoices');
-      if (savedInvoices) setInvoices(JSON.parse(savedInvoices));
-
-      const savedTickets = localStorage.getItem('omnysync_portal_tickets');
-      if (savedTickets) setTickets(JSON.parse(savedTickets));
-
-      const savedFiles = localStorage.getItem('omnysync_portal_files');
-      if (savedFiles) setFiles(JSON.parse(savedFiles));
-    } catch {
-      // ignore
-    }
-  }, []);
+    if (projects.length && !selectedProjectId) setSelectedProjectId(projects[0].id);
+    if (tickets.length && !selectedTicketId) setSelectedTicketId(tickets[0].id);
+  }, [projects, tickets, selectedProjectId, selectedTicketId]);
 
   // Update profile balance when invoices change
-  useEffect(() => {
-    const pendingTotal = invoices
-      .filter((inv) => inv.status === 'Pending' || inv.status === 'Overdue')
-      .reduce((acc, inv) => acc + inv.amount, 0);
-
-    setProfile((prev) => ({
-      ...prev,
-      balanceDue: pendingTotal,
-    }));
-  }, [invoices]);
+  /* balanceDue comes from getPortalBundle */
 
   // Invoice payment handler
   const handlePayInvoice = (invoiceId: string) => {
-    const updated = invoices.map((inv) =>
-      inv.id === invoiceId
-        ? {
-            ...inv,
-            status: 'Paid' as const,
-            paidDate: new Date().toISOString().slice(0, 10),
-            paymentMethod: 'Instant ACH Portal Settlement',
-          }
-        : inv
+    const inv = invoices.find((i) => i.id === invoiceId);
+    if (!inv) return;
+    recordPayment({ invoiceId, amount: inv.amount, method: 'Bank Transfer', note: 'Paid via client portal' });
+    setInvoices((prev) =>
+      prev.map((i) =>
+        i.id === invoiceId
+          ? { ...i, status: 'Paid' as const, paidDate: new Date().toISOString().slice(0, 10), paymentMethod: 'Bank Transfer' }
+          : i
+      )
     );
-    setInvoices(updated);
-    try {
-      localStorage.setItem('omnysync_portal_invoices', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-
-    if (selectedInvoice && selectedInvoice.id === invoiceId) {
-      setSelectedInvoice((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: 'Paid',
-              paidDate: new Date().toISOString().slice(0, 10),
-              paymentMethod: 'Instant ACH Portal Settlement',
-            }
-          : null
-      );
-    }
   };
 
-  // Pay full balance shortcut
   const handlePayFullBalance = () => {
-    const pendingInvoice = invoices.find((inv) => inv.status === 'Pending' || inv.status === 'Overdue');
-    if (pendingInvoice) {
-      setSelectedInvoice(pendingInvoice);
-      setIsInvoiceModalOpen(true);
-    }
+    invoices
+      .filter((inv) => inv.status === 'Pending' || inv.status === 'Overdue')
+      .forEach((inv) => {
+        recordPayment({
+          invoiceId: inv.id,
+          amount: inv.amount,
+          method: 'Bank Transfer',
+          note: 'Paid via client portal (full balance)',
+        });
+      });
+    setInvoices((prev) =>
+      prev.map((inv) =>
+        inv.status === 'Pending' || inv.status === 'Overdue'
+          ? {
+              ...inv,
+              status: 'Paid' as const,
+              paidDate: new Date().toISOString().slice(0, 10),
+              paymentMethod: 'Bank Transfer',
+            }
+          : inv
+      )
+    );
   };
 
-  // Support ticket creation
+  const handleSimulateFileUpload = () => {
+    const name = 'Client_Upload_' + Date.now() + '.pdf';
+    setFiles((prev) => [
+      {
+        id: 'file-' + Date.now(),
+        name,
+        size: 'PDF',
+        type: 'pdf',
+        uploadedAt: new Date().toISOString().slice(0, 10),
+        uploadedBy: profile.name,
+        category: 'Deliverable',
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleSendReply = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketReplyText.trim() || !selectedTicketId) return;
+    replyToTicket(selectedTicketId, ticketReplyText.trim(), true, profile.name);
+    setTicketReplyText('');
+  };
+
   const handleCreateTicket = (
-    newTicketData: Omit<SupportTicket, 'id' | 'ticketNumber' | 'createdAt' | 'updatedAt' | 'messages'>,
+    newTicketData: Omit<import('@/data/portalData').SupportTicket, 'id' | 'ticketNumber' | 'createdAt' | 'updatedAt' | 'messages'>,
     initialMessage: string
   ) => {
-    const newTkt: SupportTicket = {
+    const created = addTicket({
       ...newTicketData,
-      id: `tkt-${Date.now()}`,
-      ticketNumber: `TKT-2025-${Math.floor(100 + Math.random() * 900)}`,
-      createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      updatedAt: 'Just now',
+      clientId: portalClientId,
       messages: [
         {
-          id: `msg-${Date.now()}`,
+          id: 'msg-' + Date.now(),
           sender: profile.name,
           isClient: true,
           text: initialMessage,
           timestamp: 'Just now',
         },
       ],
-    };
-
-    const updated = [newTkt, ...tickets];
-    setTickets(updated);
-    setSelectedTicketId(newTkt.id);
-    try {
-      localStorage.setItem('omnysync_portal_tickets', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-  };
-
-  // Send message reply in active ticket thread
-  const handleSendReply = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ticketReplyText.trim() || !selectedTicketId) return;
-
-    const updated = tickets.map((tkt) => {
-      if (tkt.id === selectedTicketId) {
-        return {
-          ...tkt,
-          updatedAt: 'Just now',
-          messages: [
-            ...tkt.messages,
-            {
-              id: `msg-${Date.now()}`,
-              sender: profile.name,
-              isClient: true,
-              text: ticketReplyText.trim(),
-              timestamp: 'Just now',
-            },
-          ],
-        };
-      }
-      return tkt;
     });
-
-    setTickets(updated);
-    setTicketReplyText('');
-    try {
-      localStorage.setItem('omnysync_portal_tickets', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-  };
-
-  // Upload file simulation
-  const handleSimulateFileUpload = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const newFile: ClientSharedFile = {
-        id: `file-${Date.now()}`,
-        name: file.name,
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        type: file.name.split('.').pop()?.toUpperCase() || 'DOCUMENT',
-        uploadedAt: new Date().toISOString().slice(0, 10),
-        uploadedBy: `${profile.name} (${profile.company})`,
-        category: 'Deliverable',
-      };
-
-      const updated = [newFile, ...files];
-      setFiles(updated);
-      try {
-        localStorage.setItem('omnysync_portal_files', JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-    };
-    input.click();
+    setSelectedTicketId(created.id);
   };
 
   // Selected active project & ticket
@@ -283,6 +224,18 @@ export default function ClientPortalView({ onBackToERP }: ClientPortalViewProps)
   return (
     <div className="min-h-screen bg-[#0b0f0d] flex flex-col text-[#f3f4f6]">
       {/* Streamlined Client Portal Header */}
+      <div className="px-4 md:px-8 pt-4 flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-[#6b7280] font-semibold">Portal account</span>
+        <select
+          value={portalClientId}
+          onChange={(e) => setPortalClientId(e.target.value)}
+          className="bg-[#141d18] border border-[#223328] text-white text-xs rounded-lg px-2.5 py-1.5 outline-none"
+        >
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>{c.company}</option>
+          ))}
+        </select>
+      </div>
       <ClientPortalHeader
         profile={profile}
         activeTab={activeTab}

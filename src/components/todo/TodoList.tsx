@@ -20,85 +20,35 @@ import {
 } from 'lucide-react';
 
 import { TEAM_MEMBERS, TeamMember } from '@/data/projectsData';
+import { useAgency } from '@/context/AgencyContext';
+import { AgencyTask, TaskPriority as AgencyTaskPriority } from '@/data/tasksData';
 
-export type TaskPriority = 'High' | 'Medium' | 'Low';
-export type TaskCategory = 'All' | 'Finance' | 'Sales' | 'Dev' | 'Operations' | 'General';
+export type Task = AgencyTask;
+export type TaskPriority = AgencyTaskPriority;
+export type TaskCategory = 'All' | AgencyTask['category'];
 
-export interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  category: 'Finance' | 'Sales' | 'Dev' | 'Operations' | 'General';
-  priority: TaskPriority;
-  dueDate: string;
-  completed: boolean;
-  createdAt: string;
-  assignee?: TeamMember;
-}
-
-const INITIAL_TASKS: Task[] = [
-  {
-    id: 'task-1',
-    title: 'Reconcile Q3 General Ledger Accounts',
-    description: 'Verify bank statements against General Ledger postings and correct discrepancy in Account 1010.',
-    category: 'Finance',
-    priority: 'High',
-    dueDate: '2025-04-05',
-    completed: false,
-    createdAt: '2025-03-28',
-    assignee: TEAM_MEMBERS[0],
-  },
-  {
-    id: 'task-2',
-    title: 'Finalize Proposal Sent to Apex Logistics',
-    description: 'Review SLA terms and custom pricing discounts with the enterprise account executive.',
-    category: 'Sales',
-    priority: 'High',
-    dueDate: '2025-03-30',
-    completed: false,
-    createdAt: '2025-03-27',
-    assignee: TEAM_MEMBERS[1],
-  },
-  {
-    id: 'task-3',
-    title: 'Audit Inventory Reorder Thresholds',
-    description: 'Adjust safety stock levels for fast-moving warehouse components to avoid low stock alerts.',
-    category: 'Operations',
-    priority: 'Medium',
-    dueDate: '2025-04-10',
-    completed: true,
-    createdAt: '2025-03-25',
-    assignee: TEAM_MEMBERS[3],
-  },
-  {
-    id: 'task-4',
-    title: 'Deploy Real-Time Drive Backup Microservice',
-    description: 'Sync customer contracts and voucher attachments securely to cloud document storage.',
-    category: 'Dev',
-    priority: 'Medium',
-    dueDate: '2025-04-02',
-    completed: false,
-    createdAt: '2025-03-26',
-    assignee: TEAM_MEMBERS[4],
-  },
-  {
-    id: 'task-5',
-    title: 'Post Monthly Depreciation Journal Vouchers',
-    description: 'Calculate monthly wear & tear on plant machinery and post JV-2025-044.',
-    category: 'Finance',
-    priority: 'Low',
-    dueDate: '2025-04-15',
-    completed: false,
-    createdAt: '2025-03-28',
-    assignee: TEAM_MEMBERS[5],
-  },
-];
+/* seeded in AgencyContext */
 
 const CATEGORIES: TaskCategory[] = ['All', 'Finance', 'Sales', 'Dev', 'Operations', 'General'];
 
 export default function TodoList() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [activeCategory, setActiveCategory] = useState<TaskCategory>('All');
+  const agency = useAgency();
+  const tasks = agency.tasks;
+  const setTasks = (updater: any) => {
+    if (typeof updater === 'function') {
+      const next = updater(agency.tasks);
+      // sync diffs
+      next.forEach((t: AgencyTask) => {
+        const prev = agency.tasks.find((x) => x.id === t.id);
+        if (!prev) agency.addTask(t);
+        else if (JSON.stringify(prev) !== JSON.stringify(t)) agency.updateTask(t);
+      });
+      agency.tasks.forEach((t) => {
+        if (!next.find((x: AgencyTask) => x.id === t.id)) agency.deleteTask(t.id);
+      });
+    }
+  };
+    const [activeCategory, setActiveCategory] = useState<TaskCategory>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
 
@@ -113,21 +63,7 @@ export default function TodoList() {
   const [formDueDate, setFormDueDate] = useState('');
   const [formAssigneeId, setFormAssigneeId] = useState<string>(TEAM_MEMBERS[0].id);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('omnysync_erp_tasks');
-      if (saved) {
-        setTasks(JSON.parse(saved));
-      } else {
-        setTasks(INITIAL_TASKS);
-      }
-    } catch {
-      setTasks(INITIAL_TASKS);
-    }
-  }, []);
-
-  // Save to localStorage whenever tasks change
+    // Save to localStorage whenever tasks change
   const saveTasks = (newTasks: Task[]) => {
     setTasks(newTasks);
     try {

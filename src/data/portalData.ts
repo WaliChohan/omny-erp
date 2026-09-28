@@ -81,6 +81,7 @@ export interface TicketMessage {
 
 export interface SupportTicket {
   id: string;
+  clientId?: string;
   ticketNumber: string;
   title: string;
   description: string;
